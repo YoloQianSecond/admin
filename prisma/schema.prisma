@@ -1,0 +1,48 @@
+// prisma/schema.prisma
+// Purpose: Minimal models for TeamMember and NewsPost.
+// NOTE: For PII with Azure Always Encrypted, add column encryption at the DB level later.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // switch to "sqlserver" for Azure SQL later
+  url      = env("DATABASE_URL")
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Non-sensitive
+  name      String
+  email     String  @unique
+  teamName  String?
+  discordId String?
+  gameId    String? // e.g., Steam ID / in-game ID
+
+  // Sensitive (collect only for winners). For dev we store plaintext; on Azure SQL enforce Always Encrypted.
+  passportId  String? // AE later
+  nationalId  String? // AE later
+  bankDetails String? // AE later
+  phone       String? // AE later
+}
+
+model NewsPost {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title       String
+  slug        String    @unique
+  body        String // markdown or HTML
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+
+  // Image stored directly in DB
+  imageData Bytes? // SQLite -> BLOB, SQL Server -> VARBINARY(MAX)
+  imageMime String? // e.g., "image/png", "image/jpeg"
+  imageSize Int? // bytes, useful for limits/checks
+}
