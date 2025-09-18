@@ -10,17 +10,17 @@ import { Activity, Users, PackageOpen, AlertTriangle } from "lucide-react";
 export default function AdminPage() {
 // Demo data; replace with real server data (db/fetch) later.
 const stats = [
-{ label: "Active Users", value: "1,284", icon: Users },
-{ label: "Sessions Today", value: "3,902", icon: Activity },
-{ label: "Orders", value: "243", icon: PackageOpen },
-{ label: "Alerts", value: "5", icon: AlertTriangle },
+{ label: "Total Team", value: "N/A", icon: Users },
+{ label: "Total Registered Member", value: "N/A", icon: Activity },
+// { label: "Total News", value: "N/A", icon: PackageOpen },
+{ label: "News and Updates", value: "N/A", icon: AlertTriangle },
 ];
 
 
 const rows = [
-{ id: "#4102", name: "Alice", action: "Signed In", at: "2025-09-17 10:21" },
-{ id: "#4101", name: "Bob", action: "Order Created", at: "2025-09-17 09:58" },
-{ id: "#4100", name: "Kai", action: "Password Reset", at: "2025-09-17 09:41" },
+// { id: "#4102", name: "Alice", action: "Signed In", at: "2025-09-17 10:21" },
+// { id: "#4101", name: "Bob", action: "Order Created", at: "2025-09-17 09:58" },
+// { id: "#4100", name: "Kai", action: "Password Reset", at: "2025-09-17 09:41" },
 ];
 
 

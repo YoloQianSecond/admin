@@ -26,7 +26,7 @@ return (
 <Link href="/admin/teams" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Teams</Link>
 <Link href="/admin/news" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">News</Link>
 <Link href="/admin/settings" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">
-<Settings className="h-4 w-4" /> Settings
+{/* <Settings className="h-4 w-4" /> Settings */}
 </Link>
 </nav>
 </div>

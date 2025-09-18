@@ -12,7 +12,7 @@ TableRow,
 } from "@/components/ui/table";
 
 
-export type Row = { id: string; name: string; action: string; at: string };
+export type Row = { id: string; name: string; Leader: string; Member: string; IGN: string; DiscordID: string; Email: string};
 
 
 export function RecentTable({ rows }: { rows: Row[] }) {
@@ -21,10 +21,12 @@ return (
 <Table>
 <TableHeader>
 <TableRow>
-<TableHead>ID</TableHead>
-<TableHead>Name</TableHead>
-<TableHead>Action</TableHead>
-<TableHead className="text-right">Timestamp</TableHead>
+<TableHead>Team</TableHead>
+<TableHead>Leader</TableHead>
+<TableHead>Member</TableHead>
+<TableHead>IGN</TableHead>
+<TableHead>DiscordID</TableHead>
+<TableHead>Email</TableHead>
 </TableRow>
 </TableHeader>
 <TableBody>
@@ -32,8 +34,11 @@ return (
 <TableRow key={r.id}>
 <TableCell className="font-medium">{r.id}</TableCell>
 <TableCell>{r.name}</TableCell>
-<TableCell>{r.action}</TableCell>
-<TableCell className="text-right">{r.at}</TableCell>
+<TableCell>{r.Leader}</TableCell>
+<TableCell>{r.Member}</TableCell>
+<TableCell>{r.IGN}</TableCell>
+<TableCell>{r.DiscordID}</TableCell>
+<TableCell>{r.Email}</TableCell>
 </TableRow>
 ))}
 </TableBody>
