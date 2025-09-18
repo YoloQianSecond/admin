@@ -1,52 +1,138 @@
 // src/app/(admin)/admin/teams/page.tsx
-// Admin Teams page: list members, add simple form, export CSV.
-
 "use client";
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { RecentTable } from "@/components/admin/RecentTable"; // ✅ use alias path
+import { RecentTable } from "@/components/admin/RecentTable";
 
 type Member = {
   id: string;
-  createdAt: string; // ISO string from API
+  createdAt: string;
+  updatedAt: string;        // ✅ for cache-busting (if ever needed)
   name: string;
   email: string;
-  teamName?: string;
-  discordId?: string;
-  gameId?: string;
+  teamName?: string | null;
+  teamTricode?: string | null;
+  discordId?: string | null;
+  gameId?: string | null;
+  isLeader?: boolean;
 };
 
 export default function TeamsPage() {
   const [members, setMembers] = useState<Member[]>([]);
+  const [error, setError] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // form + edit mode
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     email: "",
     teamName: "",
+    teamTricode: "",
     discordId: "",
     gameId: "",
+    isLeader: false,
   });
 
   async function load() {
-    const res = await fetch("/api/teams", { cache: "no-store" });
+    setError("");
+    const res = await fetch(`/api/teams?ts=${Date.now()}`, { cache: "no-store" }); // ✅ bust any stubborn cache
     const data = await res.json();
     setMembers(data.members ?? []);
   }
+  useEffect(() => { load(); }, []);
 
-  useEffect(() => {
-    load();
-  }, []);
+  function resetForm() {
+    setEditingId(null);
+    setForm({
+      name: "",
+      email: "",
+      teamName: "",
+      teamTricode: "",
+      discordId: "",
+      gameId: "",
+      isLeader: false,
+    });
+    setError("");
+  }
+
+  function startEdit(m: Member) {
+    setEditingId(m.id);
+    setForm({
+      name: m.name ?? "",
+      email: m.email ?? "",
+      teamName: m.teamName ?? "",
+      teamTricode: (m.teamTricode ?? "").toUpperCase(),
+      discordId: m.discordId ?? "",
+      gameId: m.gameId ?? "",
+      isLeader: !!m.isLeader,
+    });
+    setError("");
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/teams", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    setForm({ name: "", email: "", teamName: "", discordId: "", gameId: "" });
+    setError("");
+    try {
+      setSubmitting(true);
+      const payload = {
+        name: form.name,
+        email: form.email.toLowerCase(),
+        teamName: form.teamName || null,
+        teamTricode: form.teamTricode ? form.teamTricode.toUpperCase() : null,
+        discordId: form.discordId || null,
+        gameId: form.gameId || null,
+        isLeader: !!form.isLeader,
+      };
+
+      let res: Response;
+      if (editingId) {
+        res = await fetch(`/api/teams/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch("/api/teams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        const msg =
+          json?.error ||
+          (res.status === 409
+            ? "Duplicate email. Each email must be unique."
+            : `Failed to ${editingId ? "update" : "add"} member (${res.status}).`);
+        setError(msg);
+        return;
+      }
+
+      resetForm();
+      await load();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onDelete(id: string) {
+    if (!confirm("Delete this member?")) return;
+    setError("");
+    const res = await fetch(`/api/teams/${id}`, { method: "DELETE" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      setError(json?.error || `Failed to delete (${res.status}).`);
+      return;
+    }
+    // Optimistic refresh
     await load();
   }
 
@@ -54,10 +140,7 @@ export default function TeamsPage() {
     <div className="space-y-6">
       <Card>
         <CardContent className="p-4">
-          <form
-            onSubmit={onSubmit}
-            className="grid grid-cols-1 md:grid-cols-3 gap-3"
-          >
+          <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Input
               placeholder="Name"
               value={form.name}
@@ -77,6 +160,14 @@ export default function TeamsPage() {
               onChange={(e) => setForm({ ...form, teamName: e.target.value })}
             />
             <Input
+              placeholder="Team Tricode (e.g. ABC)"
+              maxLength={3}
+              value={form.teamTricode}
+              onChange={(e) =>
+                setForm({ ...form, teamTricode: e.target.value.toUpperCase() })
+              }
+            />
+            <Input
               placeholder="Discord ID"
               value={form.discordId}
               onChange={(e) => setForm({ ...form, discordId: e.target.value })}
@@ -86,9 +177,30 @@ export default function TeamsPage() {
               value={form.gameId}
               onChange={(e) => setForm({ ...form, gameId: e.target.value })}
             />
-            <Button type="submit" className="md:col-span-3">
-              Add Member
-            </Button>
+
+            <label className="flex items-center gap-2 text-sm md:col-span-3">
+              <input
+                type="checkbox"
+                checked={!!form.isLeader}
+                onChange={(e) => setForm({ ...form, isLeader: e.target.checked })}
+              />
+              Mark as Team Leader
+            </label>
+
+            {error && (
+              <div className="text-red-600 text-sm md:col-span-3 -mt-1">{error}</div>
+            )}
+
+            <div className="flex gap-2 md:col-span-3">
+              <Button type="submit" disabled={submitting}>
+                {submitting ? (editingId ? "Updating..." : "Adding...") : editingId ? "Update Member" : "Add Member"}
+              </Button>
+              {editingId && (
+                <Button type="button" variant="secondary" onClick={resetForm} disabled={submitting}>
+                  Cancel
+                </Button>
+              )}
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -99,15 +211,45 @@ export default function TeamsPage() {
         </a>
       </div>
 
-      {/* reuse table for quick view */}
-      <RecentTable
+      {/* Table with Edit/Delete */}
+      <div className="space-y-2">
+        {members.map((m) => (
+          <div key={`${m.id}-${m.updatedAt}`} className="border rounded-md p-3 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="font-medium">
+                {m.name} {m.isLeader ? <span className="text-xs text-green-600">(Leader)</span> : null}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {m.email}
+                {m.teamTricode ? ` • ${m.teamTricode}` : ""}
+                {m.teamName ? ` • ${m.teamName}` : ""}
+                {m.discordId ? ` • ${m.discordId}` : ""}
+                {m.gameId ? ` • ${m.gameId}` : ""}
+              </div>
+              <div className="text-[11px] text-muted-foreground/70">
+                {new Date(m.createdAt).toLocaleString()}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => startEdit(m)}>Edit</Button>
+              <Button size="sm" variant="destructive" onClick={() => onDelete(m.id)}>Delete</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Optional: keep your compact RecentTable if you still want it */}
+      {/* <RecentTable
         rows={members.map((m) => ({
           id: m.id.slice(0, 6),
-          name: m.name,
-          action: m.email,
+          name: `${m.name}${m.isLeader ? " (Leader)" : ""}`,
+          action:
+            `${m.email}` +
+            (m.teamTricode ? ` • ${m.teamTricode}` : "") +
+            (m.teamName ? ` • ${m.teamName}` : ""),
           at: new Date(m.createdAt).toLocaleString(),
         }))}
-      />
+      /> */}
     </div>
   );
 }

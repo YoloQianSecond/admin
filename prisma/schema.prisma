@@ -23,6 +23,10 @@ model TeamMember {
   discordId String?
   gameId    String? // e.g., Steam ID / in-game ID
 
+  // NEW: mark leader & keep the team tri-code
+  isLeader     Boolean  @default(false)   // <-- NEW
+  teamTricode  String?                   // <-- NEW
+
   // Sensitive (collect only for winners). For dev we store plaintext; on Azure SQL enforce Always Encrypted.
   passportId  String? // AE later
   nationalId  String? // AE later
