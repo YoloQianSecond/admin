@@ -1,61 +1,90 @@
-// src/app/api/news/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { withCors, corsPreflight } from "@/lib/cors";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  // Do NOT send imageData in the list response (it’s big)
-  const posts = await prisma.newsPost.findMany({
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true, title: true, slug: true, body: true,
-      published: true, createdAt: true, imageMime: true
-    }
-  });
-  // Add a convenience flag for the UI
-  return NextResponse.json({
-    ok: true,
-    posts: posts.map(p => ({ ...p, hasImage: !!p.imageMime })),
-  });
+// Preflight for cross-origin requests
+export async function OPTIONS() {
+  return corsPreflight();
 }
 
+// List all published news
+export async function GET() {
+  const posts = await prisma.newsPost.findMany({
+    where: { published: true },
+    orderBy: [{ date: "desc" }, { publishedAt: "desc" }],
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      entity: true,
+      link: true,
+      date: true,
+      publishedAt: true,
+      updatedAt: true,      // ✅ include this
+      imageMime: true,
+    },
+  });
+
+  return withCors(
+    NextResponse.json({
+      ok: true,
+      posts: posts.map((p) => ({ ...p, hasImage: !!p.imageMime })),
+    })
+  );
+}
+
+// Create new post
 export async function POST(req: Request) {
-  // Expect multipart/form-data for file uploads
   const form = await req.formData();
+
   const title = String(form.get("title") ?? "");
-  const slug = String(form.get("slug") ?? "");
-  const body = String(form.get("body") ?? "");
+  const description = form.get("description") ? String(form.get("description")) : "";
+  const entity = form.get("entity") ? String(form.get("entity")) : null;
+  const link = form.get("link") ? String(form.get("link")) : null;
+  const publishNow = String(form.get("publishNow") ?? "true") === "true";
+  const dateStr = form.get("date") ? String(form.get("date")) : "";
   const file = form.get("image") as File | null;
 
-  if (!title || !slug || !body) {
-    return NextResponse.json({ ok: false, error: "title, slug, body required" }, { status: 400 });
+  if (!title) {
+    return withCors(
+      NextResponse.json({ ok: false, error: "title required" }, { status: 400 })
+    );
+  }
+
+  let date: Date | null = null;
+  if (dateStr) {
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) date = parsed;
   }
 
   let imageData: Buffer | undefined;
   let imageMime: string | undefined;
-  let imageSize: number | undefined;
 
   if (file && typeof file.arrayBuffer === "function") {
-    // Basic guardrails (optional)
-    const MAX = 5 * 1024 * 1024; // 5MB
-    if (file.size > MAX) {
-      return NextResponse.json({ ok: false, error: "Image too large (max 5MB)" }, { status: 413 });
-    }
-    imageMime = file.type || "application/octet-stream";
-    imageSize = file.size;
     const abuf = await file.arrayBuffer();
     imageData = Buffer.from(abuf);
+    imageMime = file.type || "application/octet-stream";
   }
+
+  const publishedAt = publishNow ? (date ?? new Date()) : null;
 
   const post = await prisma.newsPost.create({
     data: {
-      title, slug, body,
+      title,
+      description,
+      entity,
+      link,
+      date,
+      published: publishNow,
+      publishedAt,
       imageData,
       imageMime: imageData ? imageMime : null,
-      imageSize: imageData ? imageSize : null,
-    }
+    },
+    select: { id: true },
   });
 
-  return NextResponse.json({ ok: true, post: { id: post.id } });
+  return withCors(NextResponse.json({ ok: true, post }));
 }

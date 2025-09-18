@@ -1,4 +1,3 @@
-// src/app/(admin)/admin/news/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,19 +8,32 @@ import { Card, CardContent } from "@/components/ui/card";
 interface Post {
   id: string;
   title: string;
-  slug: string;
-  body: string;
+  description?: string;
+  entity?: string | null;
+  link?: string | null;
+  date?: string | null;
   published: boolean;
+  publishedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;  // ✅ add this for cache image busting
   imageMime?: string | null;
-  hasImage?: boolean; // from API
+  hasImage?: boolean;
 }
 
 export default function NewsPage() {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [form, setForm] = useState({ title: "", slug: "", body: "" });
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    entity: "",
+    link: "",
+    date: "",
+    publishNow: true,
+  });
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/news", { cache: "no-store" });
@@ -29,32 +41,75 @@ export default function NewsPage() {
     setPosts(data.posts ?? []);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
     setFile(f);
-    if (f) setPreview(URL.createObjectURL(f));
-    else setPreview(null);
+    setPreview(f ? URL.createObjectURL(f) : null);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const fd = new FormData();
     fd.append("title", form.title);
-    fd.append("slug", form.slug);
-    fd.append("body", form.body);
+    fd.append("description", form.description);
+    fd.append("entity", form.entity);
+    fd.append("link", form.link);
+    if (form.date) fd.append("date", form.date);
+    fd.append("publishNow", String(form.publishNow));
     if (file) fd.append("image", file);
 
-    await fetch("/api/news", { method: "POST", body: fd });
-    setForm({ title: "", slug: "", body: "" });
-    setFile(null);
-    setPreview(null);
+    let res: Response;
+    if (editingId) {
+      res = await fetch(`/api/news/${editingId}`, { method: "PATCH", body: fd });
+    } else {
+      res = await fetch("/api/news", { method: "POST", body: fd });
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err?.error ?? "Failed to save post");
+      return;
+    }
+
+    resetForm();
     await load();
   }
 
-  async function publish(id: string) {
-    await fetch(`/api/news/${id}/publish`, { method: "POST" });
+  function resetForm() {
+    setForm({
+      title: "",
+      description: "",
+      entity: "",
+      link: "",
+      date: "",
+      publishNow: true,
+    });
+    setFile(null);
+    setPreview(null);
+    setEditingId(null);
+  }
+
+  function startEdit(p: Post) {
+    setEditingId(p.id);
+    setForm({
+      title: p.title,
+      description: p.description ?? "",
+      entity: p.entity ?? "",
+      link: p.link ?? "",
+      date: p.date ? p.date.substring(0, 10) : "",
+      publishNow: !!p.published, // always boolean
+    });
+    setFile(null); // clear previous file selection
+    setPreview(p.hasImage ? `/api/news/${p.id}/image` : null);
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Delete this post?")) return;
+    await fetch(`/api/news/${id}`, { method: "DELETE" });
     await load();
   }
 
@@ -69,11 +124,31 @@ export default function NewsPage() {
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               required
             />
+
             <Input
-              placeholder="Slug (unique)"
-              value={form.slug}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
+              placeholder="Short Description (card excerpt)"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
               required
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Input
+                placeholder='Entity / Author (e.g. "Tournament Director")'
+                value={form.entity}
+                onChange={(e) => setForm({ ...form, entity: e.target.value })}
+              />
+              <Input
+                placeholder='Read More link (optional, e.g. "/news/id" or "https://...")'
+                value={form.link}
+                onChange={(e) => setForm({ ...form, link: e.target.value })}
+              />
+            </div>
+
+            <Input
+              type="date"
+              value={form.date ?? ""} // always string
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
             />
 
             {/* Image upload (optional) */}
@@ -86,14 +161,27 @@ export default function NewsPage() {
               />
             )}
 
-            <textarea
-              className="w-full min-h-40 border rounded-md p-2"
-              placeholder="Body (Markdown or HTML)"
-              value={form.body}
-              onChange={(e) => setForm({ ...form, body: e.target.value })}
-              required
-            />
-            <Button type="submit">Create Post</Button>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!form.publishNow} // always boolean
+                onChange={(e) =>
+                  setForm({ ...form, publishNow: e.target.checked })
+                }
+              />
+              Publish now
+            </label>
+
+            <div className="flex gap-2">
+              <Button type="submit">
+                {editingId ? "Update Post" : "Create Post"}
+              </Button>
+              {editingId && (
+                <Button type="button" variant="secondary" onClick={resetForm}>
+                  Cancel
+                </Button>
+              )}
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -101,27 +189,50 @@ export default function NewsPage() {
       <ul className="space-y-3">
         {posts.map((p) => (
           <li key={p.id} className="border rounded-md p-3">
-            {/* Render DB image if present */}
-            {p.hasImage ? (
+            {p.hasImage && (
               <img
-                src={`/api/news/${p.id}/image`}
+                src={`/api/news/${p.id}/image?ts=${encodeURIComponent(p.updatedAt ?? "")}`}
                 alt={p.title}
                 className="mb-3 max-h-56 w-full rounded-md object-cover"
               />
-            ) : null}
+            )}
 
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{p.title}</span>
-              {!p.published ? (
-                <Button size="sm" onClick={() => publish(p.id)}>
-                  Publish
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-medium text-lg">{p.title}</span>
+                <div className="text-xs text-muted-foreground">
+                  {p.date ? new Date(p.date).toLocaleDateString() : ""}
+                  {p.entity ? ` • ${p.entity}` : ""}
+                  {p.link && (
+                    <>
+                      {" • "}
+                      <a
+                        className="underline"
+                        href={p.link}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Read More
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => startEdit(p)}>
+                  Edit
                 </Button>
-              ) : (
-                <span className="text-xs text-green-600">Published</span>
-              )}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => remove(p.id)}
+                >
+                  Delete
+                </Button>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">/{p.slug}</div>
-            <p className="mt-2 text-sm whitespace-pre-wrap">{p.body}</p>
+
+            {p.description && <p className="mt-2 text-sm">{p.description}</p>}
           </li>
         ))}
       </ul>

@@ -36,13 +36,14 @@ model NewsPost {
   updatedAt DateTime @updatedAt
 
   title       String
-  slug        String    @unique
-  body        String // markdown or HTML
+  description String   // short summary for cards
+  entity      String?  // e.g. "Tournament Director"
+  link        String?  // optional "Read More" URL (external or internal)
+  date        DateTime?   // <-- manual input for display date
   published   Boolean   @default(false)
   publishedAt DateTime?
 
   // Image stored directly in DB
   imageData Bytes? // SQLite -> BLOB, SQL Server -> VARBINARY(MAX)
   imageMime String? // e.g., "image/png", "image/jpeg"
-  imageSize Int? // bytes, useful for limits/checks
 }
