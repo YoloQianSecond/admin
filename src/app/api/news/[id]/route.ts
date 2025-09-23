@@ -1,3 +1,4 @@
+// src/app/api/news/[id]/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { withCors, corsPreflight } from "@/lib/cors";
@@ -11,7 +12,9 @@ export async function OPTIONS() {
 }
 
 // Edit (PATCH)
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params; // ⬅️ Next 15: await params
+
   const form = await req.formData();
 
   const title = form.get("title") ? String(form.get("title")) : undefined;
@@ -36,7 +39,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const updated = await prisma.newsPost.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       ...(title !== undefined && { title }),
       ...(description !== undefined && { description }),
@@ -46,15 +49,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       ...(imageData && { imageData, imageMime }),
     },
     select: {
-        id: true,
-        title: true,
-        description: true,
-        entity: true,
-        link: true,
-        date: true,
-        published: true,
-        publishedAt: true,
-        imageMime: true,
+      id: true,
+      title: true,
+      description: true,
+      entity: true,
+      link: true,
+      date: true,
+      published: true,
+      publishedAt: true,
+      imageMime: true,
     },
   });
 
@@ -62,7 +65,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 // Delete (DELETE)
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  await prisma.newsPost.delete({ where: { id: params.id } });
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params; // ⬅️ Next 15: await params
+  await prisma.newsPost.delete({ where: { id } });
   return withCors(NextResponse.json({ ok: true }));
 }

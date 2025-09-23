@@ -11,7 +11,9 @@ import { verifySession } from "@/lib/jwt";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   // --- Auth gate ---
-  const token = cookies().get("session")?.value;
+  const cookieStore = await cookies();                 // ⬅️ await cookies()
+  const token = cookieStore.get("session")?.value;     // ⬅️ read from store
+
   if (!token) {
     redirect("/login");
   }
