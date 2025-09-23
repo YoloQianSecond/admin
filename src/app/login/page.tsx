@@ -1,16 +1,11 @@
-// src/app/login/page.tsx
-// Purpose: Passwordless login UI. Step 1: request code. Step 2: verify code.
-
 "use client";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
@@ -46,7 +41,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, code }),
       });
       if (res.ok) {
-        router.replace("/admin");
+        window.location.href = "/admin"; // full reload so SSR sees cookie
       } else {
         const data = await res.json();
         setMsg(data.error || "Invalid or expired code");

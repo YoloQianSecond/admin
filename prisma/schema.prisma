@@ -11,6 +11,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum MemberRole {
+  LEADER
+  MEMBER
+  SUBSTITUTE
+  COACH
+}
+
 model TeamMember {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
@@ -20,12 +27,10 @@ model TeamMember {
   name      String
   email     String  @unique
   teamName  String?
+  teamTricode  String?
   discordId String?
   gameId    String? // e.g., Steam ID / in-game ID
-
-  // NEW: mark leader & keep the team tri-code
-  isLeader     Boolean  @default(false)   // <-- NEW
-  teamTricode  String?                   // <-- NEW
+  role      MemberRole @default(MEMBER)
 
   // Sensitive (collect only for winners). For dev we store plaintext; on Azure SQL enforce Always Encrypted.
   passportId  String? // AE later

@@ -1,68 +1,45 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { verifySession } from "@/lib/jwt";
+// // middleware.ts
+// import { NextResponse } from "next/server";
+// import type { NextRequest } from "next/server";
+// import { verifySession } from "@/lib/jwt";
 
-// Public paths that do NOT require auth
-const PUBLIC_PATHS = ["/login", "/api/auth"];
+// export async function middleware(req: NextRequest) {
+//   const { pathname } = req.nextUrl;
 
-function isPublic(pathname: string) {
-  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-}
+//   if (
+//     pathname.startsWith("/_next") ||
+//     pathname.startsWith("/static") ||
+//     pathname.startsWith("/images") ||
+//     pathname === "/favicon.ico"
+//   ) {
+//     return NextResponse.next();
+//   }
 
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+//   // Always allow login & OTP endpoints
+//   if (pathname.startsWith("/login") || pathname.startsWith("/api/auth")) {
+//     return NextResponse.next();
+//   }
 
-  // Skip Next.js internals & assets to avoid loops
-  if (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/static") ||
-    pathname === "/favicon.ico" ||
-    pathname.startsWith("/images") ||
-    pathname.startsWith("/api/news/") // keep only if news images should be public
-  ) {
-    return NextResponse.next();
-  }
+//   const token = req.cookies.get("admin_session")?.value;
+//   console.log("[MIDDLEWARE] Cookie present?", !!token);
 
-  // If user is already authed, keep them off /login
-  if (pathname.startsWith("/login")) {
-    const token = req.cookies.get("session")?.value;
-    if (!token) return NextResponse.next();
-    try {
-      const p = await verifySession(token);
-      const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase();
-      if (p.sub?.toLowerCase() === adminEmail) {
-        return NextResponse.redirect(new URL("/admin", req.url));
-      }
-    } catch {
-      /* invalid token -> fall through to /login */
-    }
-    return NextResponse.next();
-  }
+//   if (!token) {
+//     console.log("[MIDDLEWARE] No token, redirecting");
+//     return NextResponse.redirect(new URL("/login", req.url));
+//   }
 
-  // Allow other public paths (e.g., /api/auth/*)
-  if (isPublic(pathname)) {
-    return NextResponse.next();
-  }
+//   try {
+//     const payload = await verifySession(token);
+//     console.log("[MIDDLEWARE] JWT Payload:", payload);
+//     return NextResponse.next();
+//   } catch (e) {
+//     console.log("[MIDDLEWARE] Verify failed:", e);
+//     const res = NextResponse.redirect(new URL("/login", req.url));
+//     res.cookies.set("admin_session", "", { path: "/", httpOnly: true, maxAge: 0 });
+//     return res;
+//   }
+// }
 
-  // Everything else requires a valid session
-  const token = req.cookies.get("session")?.value;
-  if (!token) {
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
-
-  try {
-    const payload = await verifySession(token);
-    const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase();
-    if (payload.sub?.toLowerCase() !== adminEmail) throw new Error("not admin");
-    return NextResponse.next();
-  } catch {
-    const res = NextResponse.redirect(new URL("/login", req.url));
-    res.cookies.set("session", "", { path: "/", httpOnly: true, maxAge: 0 });
-    return res;
-  }
-}
-
-// Apply to everything except Next internals/static
-export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
-};
+// export const config = {
+//   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+// };
