@@ -51,8 +51,8 @@ export async function POST(req: Request) {
       },
     });
     return NextResponse.json({ ok: true, member: { id: created.id } });
-  } catch (err: any) {
-    if (String(err?.code) === "P2002") {
+  } catch (err: unknown) {
+    if (String(err instanceof Error) === "P2002") {
       return NextResponse.json(
         { ok: false, error: "Duplicate email. Each email must be unique." },
         { status: 409 }

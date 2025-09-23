@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { RecentTable } from "@/components/admin/RecentTable";
 
 type Member = {
   id: string;
@@ -206,7 +205,12 @@ export default function TeamsPage() {
       </Card>
 
       <div className="flex justify-end">
-        <a href="/api/teams/export">
+        <a
+          href="/api/teams/export"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block"
+        >
           <Button>Export CSV</Button>
         </a>
       </div>

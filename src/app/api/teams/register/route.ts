@@ -64,9 +64,9 @@ export async function POST(req: Request) {
     ]);
 
     return withCors(NextResponse.json({ ok: true }));
-  } catch (err: any) {
+  } catch (err: unknown) {
     // If a duplicate email hits the unique constraint:
-    if (String(err?.code) === "P2002") {
+    if (String(err instanceof Error) === "P2002") {
       return withCors(NextResponse.json({ ok: false, error: "Duplicate email" }, { status: 409 }));
     }
     console.error("Register error:", err);

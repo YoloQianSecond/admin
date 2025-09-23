@@ -12,7 +12,7 @@ TableRow,
 } from "@/components/ui/table";
 
 
-export type Row = { id: string; name: string; Leader: string; Member: string; IGN: string; DiscordID: string; Email: string};
+export type Row = { id: string; team: string; Leader: string; Member: string; IGN: string; DiscordID: string; Email: string};
 
 
 export function RecentTable({ rows }: { rows: Row[] }) {
@@ -33,7 +33,7 @@ return (
 {rows.map((r) => (
 <TableRow key={r.id}>
 <TableCell className="font-medium">{r.id}</TableCell>
-<TableCell>{r.name}</TableCell>
+<TableCell>{r.team}</TableCell>
 <TableCell>{r.Leader}</TableCell>
 <TableCell>{r.Member}</TableCell>
 <TableCell>{r.IGN}</TableCell>

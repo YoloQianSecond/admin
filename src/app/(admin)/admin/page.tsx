@@ -4,7 +4,7 @@
 
 import { StatCard } from "@/components/admin/StatCard";
 import { RecentTable } from "@/components/admin/RecentTable";
-import { Activity, Users, PackageOpen, AlertTriangle } from "lucide-react";
+import { Activity, Users, AlertTriangle } from "lucide-react";
 
 
 export default function AdminPage() {
@@ -18,9 +18,7 @@ const stats = [
 
 
 const rows = [
-// { id: "#4102", name: "Alice", action: "Signed In", at: "2025-09-17 10:21" },
-// { id: "#4101", name: "Bob", action: "Order Created", at: "2025-09-17 09:58" },
-// { id: "#4100", name: "Kai", action: "Password Reset", at: "2025-09-17 09:41" },
+{ id: "#4102", team: "Demo", Leader: "Demo", Member: "Demo", IGN: "Demo", DiscordID: "Demo#1234", Email: "demo@demo.com"},
 ];
 
 

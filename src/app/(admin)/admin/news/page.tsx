@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image"; // ✅ use Next.js Image
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +16,7 @@ interface Post {
   published: boolean;
   publishedAt?: string | null;
   createdAt: string;
-  updatedAt?: string;  // ✅ add this for cache image busting
+  updatedAt?: string; // ✅ used for cache busting images
   imageMime?: string | null;
   hasImage?: boolean;
 }
@@ -32,7 +33,6 @@ export default function NewsPage() {
   });
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-
   const [editingId, setEditingId] = useState<string | null>(null);
 
   async function load() {
@@ -101,9 +101,9 @@ export default function NewsPage() {
       entity: p.entity ?? "",
       link: p.link ?? "",
       date: p.date ? p.date.substring(0, 10) : "",
-      publishNow: !!p.published, // always boolean
+      publishNow: !!p.published,
     });
-    setFile(null); // clear previous file selection
+    setFile(null);
     setPreview(p.hasImage ? `/api/news/${p.id}/image` : null);
   }
 
@@ -147,24 +147,29 @@ export default function NewsPage() {
 
             <Input
               type="date"
-              value={form.date ?? ""} // always string
+              value={form.date ?? ""}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
             />
 
             {/* Image upload (optional) */}
             <Input type="file" accept="image/*" onChange={onFileChange} />
             {preview && (
-              <img
-                src={preview}
-                alt="Preview"
-                className="max-h-48 w-auto rounded-md border object-cover"
-              />
+              <div className="relative w-full max-w-lg h-48">
+                <Image
+                  src={preview}
+                  alt="Preview"
+                  fill
+                  unoptimized
+                  className="rounded-md border object-cover"
+                  sizes="(max-width: 768px) 100vw, 400px"
+                />
+              </div>
             )}
 
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={!!form.publishNow} // always boolean
+                checked={!!form.publishNow}
                 onChange={(e) =>
                   setForm({ ...form, publishNow: e.target.checked })
                 }
@@ -190,11 +195,16 @@ export default function NewsPage() {
         {posts.map((p) => (
           <li key={p.id} className="border rounded-md p-3">
             {p.hasImage && (
-              <img
-                src={`/api/news/${p.id}/image?ts=${encodeURIComponent(p.updatedAt ?? "")}`}
-                alt={p.title}
-                className="mb-3 max-h-56 w-full rounded-md object-cover"
-              />
+              <div className="relative mb-3 w-full h-56">
+                <Image
+                  src={`/api/news/${p.id}/image?ts=${encodeURIComponent(p.updatedAt ?? "")}`}
+                  alt={p.title}
+                  fill
+                  unoptimized
+                  className="rounded-md object-cover"
+                  sizes="(max-width: 768px) 100vw, 700px"
+                />
+              </div>
             )}
 
             <div className="flex items-center justify-between">

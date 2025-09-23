@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
-import { Package2, Home, Settings } from "lucide-react";
+import { Package2, Home } from "lucide-react";
 
 
 export function Sidebar() {
@@ -25,9 +25,9 @@ return (
 </Link>
 <Link href="/admin/teams" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Teams</Link>
 <Link href="/admin/news" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">News</Link>
-<Link href="/admin/settings" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">
-{/* <Settings className="h-4 w-4" /> Settings */}
-</Link>
+{/* <Link href="/admin/settings" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">
+<Settings className="h-4 w-4" /> Settings
+</Link> */}
 </nav>
 </div>
 </aside>

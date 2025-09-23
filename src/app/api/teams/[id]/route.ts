@@ -1,14 +1,14 @@
 // src/app/api/teams/[id]/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+// PATCH /api/teams/[id]
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
 
-export async function PATCH(req: Request, { params }: Params) {
-  const id = params.id;
   const body = await req.json();
   try {
     const updated = await prisma.teamMember.update({
@@ -36,19 +36,21 @@ export async function PATCH(req: Request, { params }: Params) {
       },
     });
     return NextResponse.json({ ok: true, member: updated });
-  } catch (err: any) {
-    if (String(err?.code) === "P2002") {
+  } catch (err: unknown) {
+    if (String(err instanceof Error) === "P2002") {
       return NextResponse.json(
         { ok: false, error: "Duplicate email. Each email must be unique." },
-        { status: 409 }
+        { status: 409 },
       );
     }
     return NextResponse.json({ ok: false, error: "Not found or server error" }, { status: 500 });
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
-  const id = params.id;
+// DELETE /api/teams/[id]
+export async function DELETE(_req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params;
+
   try {
     await prisma.teamMember.delete({ where: { id } });
     return NextResponse.json({ ok: true });
