@@ -56,3 +56,64 @@ model NewsPost {
   imageData Bytes? // SQLite -> BLOB, SQL Server -> VARBINARY(MAX)
   imageMime String? // e.g., "image/png", "image/jpeg"
 }
+
+model FormatScheduleItem {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Admin-only label
+  title     String
+  // Optional hyperlink when image is clicked on frontend
+  link      String?
+
+  // Image stored in DB
+  imageData Bytes?
+  imageMime String?
+}
+
+model Partner {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title     String
+  link      String?
+
+  imageData Bytes?
+  imageMime String?
+}
+
+model GrandFinal {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title     String
+  link      String?
+
+  imageData Bytes?
+  imageMime String?
+}
+
+model Promotion {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title     String
+  link      String?
+
+  imageData Bytes?
+  imageMime String?
+}
+
+model MatchSchedule {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  title      String
+  matchDate  DateTime   // use date-only in UI; stored as DateTime
+  liveLink   String?    // optional "Watch Live" hyperlink
+}

@@ -13,21 +13,23 @@ return (
 <div className="w-full space-y-4">
 {/* Brand */}
 <div className="flex items-center gap-2 text-xl font-semibold">
-<Package2 className="h-6 w-6" /> Admin
+<Package2 className="h-6 w-6" /> Odysseycup Admin
 </div>
 <Separator />
 
 
 {/* Nav */}
 <nav className="flex flex-col gap-1">
-<Link href="/admin" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">
+{/* <Link href="/admin" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">
 <Home className="h-4 w-4" /> Dashboard
-</Link>
+</Link> */}
 <Link href="/admin/teams" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Teams</Link>
 <Link href="/admin/news" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">News</Link>
-{/* <Link href="/admin/settings" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">
-<Settings className="h-4 w-4" /> Settings
-</Link> */}
+<Link href="/admin/format-schedule" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Format Schedule</Link>
+<Link href="/admin/partners" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Partners</Link>
+<Link href="/admin/match-schedule" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Match Schedule</Link>
+<Link href="/admin/grand-finals" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Grand Finals</Link>
+<Link href="/admin/promotions" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Promotions</Link>
 </nav>
 </div>
 </aside>
