@@ -5,6 +5,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/jwt";
 
+function getAdminEmails(): string[] {
+  return (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const store = await cookies();
   const token = store.get("admin_session")?.value; // correct cookie name
@@ -18,10 +25,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     if (payload.role !== "admin") {
       throw new Error("Not admin");
     }
-    // Optional: Check email if needed
-    const adminEmail = (process.env.ADMIN_EMAILS || "").toLowerCase();
-    if (adminEmail && (payload.sub || "").toLowerCase() !== adminEmail) {
-      throw new Error("Not admin email");
+
+    // ✅ allowlist check for multiple emails
+    const allowed = getAdminEmails();
+    const userEmail = String(payload.sub || "").toLowerCase();
+    if (allowed.length > 0 && !allowed.includes(userEmail)) {
+      throw new Error("Not an allowed admin email");
     }
   } catch {
     redirect("/login");
