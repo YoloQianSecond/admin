@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
-import { Package2, Home } from "lucide-react";
+import { Package2 } from "lucide-react";
 
 
 export function Sidebar() {

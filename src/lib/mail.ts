@@ -33,7 +33,7 @@ function getTransporter(): nodemailer.Transporter | null {
   });
 
   // Verify connection at startup
-  transporter.verify((err, success) => {
+  transporter.verify((err) => {
     if (err) {
       console.error("[mail] SMTP connection failed:", err);
     } else {

@@ -102,7 +102,10 @@ export async function POST(req: Request) {
     const dupInPayload = findDupEmails(emails);
     if (dupInPayload.length) {
       return withCors(
-        NextResponse.json({ ok: false, error: "Duplicate emails in submission", conflicts: dupInPayload }, { status: 409 })
+        NextResponse.json(
+          { ok: false, error: "Duplicate emails in submission", conflicts: dupInPayload },
+          { status: 409 },
+        ),
       );
     }
 
@@ -124,7 +127,7 @@ export async function POST(req: Request) {
     if (existing.length) {
       const conflicts = existing.map((e) => e.email.toLowerCase());
       return withCors(
-        NextResponse.json({ ok: false, error: "Email already registered", conflicts }, { status: 409 })
+        NextResponse.json({ ok: false, error: "Email already registered", conflicts }, { status: 409 }),
       );
     }
 
@@ -150,7 +153,7 @@ export async function POST(req: Request) {
     ]).catch((e) => console.error("Email batch error", e));
 
     return withCors(NextResponse.json({ ok: true }));
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (isP2002(err)) {
       return withCors(NextResponse.json({ ok: false, error: "Duplicate email" }, { status: 409 }));
     }
@@ -171,6 +174,7 @@ function findDupEmails(emails: string[]) {
   return [...dup];
 }
 
-function isP2002(e: any) {
+// Strict, typed Prisma error guard (no `any`)
+function isP2002(e: unknown): e is Prisma.PrismaClientKnownRequestError {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 }

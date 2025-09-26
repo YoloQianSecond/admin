@@ -3,11 +3,11 @@
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { useRouter } from "next/navigation";
+// import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function Header() {
-  const router = useRouter();
+  // const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleLogout() {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 type Item = {
   id: string;
@@ -17,11 +18,19 @@ export default function FormatScheduleAdmin() {
   const [err, setErr] = useState<string | null>(null);
 
   const load = async () => {
-    const r = await fetch("/api/format-schedule", { cache: "no-store" });
-    setItems(await r.json());
+    try {
+      const r = await fetch("/api/format-schedule", { cache: "no-store" });
+      if (!r.ok) throw new Error(await r.text());
+      setItems(await r.json());
+    } catch (e) {
+      console.error(e);
+      setItems([]);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,7 +50,11 @@ export default function FormatScheduleAdmin() {
 
   async function onDelete(id: string) {
     if (!confirm("Delete this item?")) return;
-    await fetch(`/api/format-schedule/${id}`, { method: "DELETE" });
+    const r = await fetch(`/api/format-schedule/${id}`, { method: "DELETE" });
+    if (!r.ok) {
+      alert(`Delete failed: ${await r.text()}`);
+      return;
+    }
     load();
   }
 
@@ -52,15 +65,15 @@ export default function FormatScheduleAdmin() {
       <form onSubmit={onSubmit} className="space-y-4 border p-4 rounded-xl">
         <div className="grid gap-3">
           <label className="font-medium">Label</label>
-          <input name="title" required placeholder="e.g. Group Stage Image #1" className="border p-2 rounded"/>
+          <input name="title" required placeholder="e.g. Group Stage Image #1" className="border p-2 rounded" />
         </div>
         <div className="grid gap-3">
           <label className="font-medium">Link (Optional)</label>
-          <input name="link" placeholder="https://..." className="border p-2 rounded"/>
+          <input name="link" placeholder="https://..." className="border p-2 rounded" />
         </div>
         <div className="grid gap-3">
           <label className="font-medium">Image</label>
-          <input name="image" type="file" accept="image/*" required className="border p-2 rounded"/>
+          <input name="image" type="file" accept="image/*" required className="border p-2 rounded" />
         </div>
         {err && <p className="text-red-600">{err}</p>}
         <button disabled={pending} className="px-4 py-2 rounded bg-black text-white">
@@ -69,36 +82,52 @@ export default function FormatScheduleAdmin() {
       </form>
 
       <section className="grid md:grid-cols-3 gap-6">
-        {items.map(it => (
-          <article key={it.id} className="border rounded-xl overflow-hidden">
-            <div className="aspect-video bg-gray-100">
-              {it.link ? (
-                <a href={it.link} target="_blank" rel="noreferrer">
-                  {/* Clickable image if link provided */}
-                  <img
-                    src={`/api/format-schedule/${it.id}/image`}
-                    alt={it.title}
-                    className="w-full h-full object-cover"
-                  />
-                </a>
-              ) : (
-                <img
-                  src={`/api/format-schedule/${it.id}/image`}
-                  alt={it.title}
-                  className="w-full h-full object-cover"
-                />
-              )}
-            </div>
-            <div className="p-3 text-sm">
-              <div className="font-semibold">Admin Label:</div>
-              <div className="text-gray-700">{it.title}</div>
-              <div className="mt-2 flex items-center justify-between">
-                <a className="text-blue-600 hover:underline" href={`/api/format-schedule/${it.id}/image`} target="_blank">Open Image</a>
-                <button onClick={() => onDelete(it.id)} className="text-red-600">Delete</button>
+        {items.map((it, idx) => {
+          const src = `/api/format-schedule/${it.id}/image`;
+          const Img = (
+            <Image
+              src={src}
+              alt={it.title}
+              // Use fill inside aspect container; Next needs sizes hint
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 33vw, 33vw"
+              className="object-cover"
+              // give priority to the first few for snappier LCP in admin
+              priority={idx < 2}
+            />
+          );
+
+          return (
+            <article key={it.id} className="border rounded-xl overflow-hidden">
+              <div className="relative aspect-video bg-gray-100">
+                {it.link ? (
+                  <a href={it.link} target="_blank" rel="noreferrer">
+                    {Img}
+                  </a>
+                ) : (
+                  Img
+                )}
               </div>
-            </div>
-          </article>
-        ))}
+              <div className="p-3 text-sm">
+                <div className="font-semibold">Admin Label:</div>
+                <div className="text-gray-700">{it.title}</div>
+                <div className="mt-2 flex items-center justify-between">
+                  <a
+                    className="text-blue-600 hover:underline"
+                    href={src}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open Image
+                  </a>
+                  <button onClick={() => onDelete(it.id)} className="text-red-600">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
       </section>
     </div>
   );

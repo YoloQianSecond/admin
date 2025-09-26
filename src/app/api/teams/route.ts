@@ -19,24 +19,25 @@ export async function GET() {
       teamTricode: true,
       discordId: true,
       gameId: true,
-      role: true,              // 👈 use enum role now
+      role: true,
     },
   });
 
-  return new NextResponse(JSON.stringify({ ok: true, members }), {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-    },
-  });
+  return NextResponse.json(
+    { ok: true, members },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    }
+  );
 }
 
 export async function POST(req: Request) {
   const body = await req.json();
 
-  // normalize & basic validation
   const name = String(body.name ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
   const teamName = String(body.teamName ?? "").trim() || null;
@@ -55,8 +56,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "teamTricode must be 3 chars" }, { status: 400 });
   }
 
-  // Optional guardrails (recommended):
-  // 1) Disallow >1 coach per tricode
+  // Only one coach per team
   if (role === "COACH" && teamTricode) {
     const existingCoach = await prisma.teamMember.findFirst({
       where: { teamTricode, role: "COACH" },
@@ -70,37 +70,14 @@ export async function POST(req: Request) {
     }
   }
 
-  // 2) (Optional) Disallow >1 leader per tricode — uncomment if you want this on manual admin adds
-  // if (role === "LEADER" && teamTricode) {
-  //   const existingLeader = await prisma.teamMember.findFirst({
-  //     where: { teamTricode, role: "LEADER" },
-  //     select: { id: true },
-  //   });
-  //   if (existingLeader) {
-  //     return NextResponse.json(
-  //       { ok: false, error: "Leader already exists for this team" },
-  //       { status: 409 }
-  //     );
-  //   }
-  // }
-
   try {
     const created = await prisma.teamMember.create({
-      data: {
-        name,
-        email,
-        teamName,
-        teamTricode,
-        discordId,
-        gameId,
-        role, // 👈 persist the enum
-      },
+      data: { name, email, teamName, teamTricode, discordId, gameId, role },
       select: { id: true },
     });
 
     return NextResponse.json({ ok: true, member: { id: created.id } });
-  } catch (err: any) {
-    // Proper Prisma unique violation detection
+  } catch (err: unknown) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return NextResponse.json(
         { ok: false, error: "Duplicate email. Each email must be unique." },
