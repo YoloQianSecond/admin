@@ -6,7 +6,9 @@ export const runtime = "nodejs";
 const prisma = new PrismaClient();
 
 // adjust for dev/prod as needed
-const ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5173";
+// const ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5173";
+const ORIGIN = process.env.CORS_ORIGIN ?? "*";
+
 
 export async function OPTIONS() {
   return new NextResponse(null, {
