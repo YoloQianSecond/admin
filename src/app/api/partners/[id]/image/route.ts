@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 
 export const runtime = "nodejs";
 const prisma = new PrismaClient();
+const ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5173";
 
 // helper: Uint8Array/Buffer -> ArrayBuffer
 function toArrayBuffer(u8: Uint8Array) {
@@ -21,7 +22,9 @@ export async function GET(
   });
 
   if (!rec?.imageData || !rec.imageMime) {
-    return new NextResponse("Not Found", { status: 404 });
+    return new NextResponse("Not Found", { status: 404,
+            headers: { "Access-Control-Allow-Origin": ORIGIN, "Vary": "Origin" },
+     });
   }
 
   // Prisma Bytes -> Uint8Array -> ArrayBuffer
@@ -32,6 +35,8 @@ export async function GET(
     headers: {
       "Content-Type": rec.imageMime,
       "Cache-Control": "public, max-age=31536000, immutable",
+      "Access-Control-Allow-Origin": ORIGIN,
+      "Vary": "Origin",
     },
   });
 }

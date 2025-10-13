@@ -1,6 +1,7 @@
+// app/api/teams/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import type { Prisma } from "@prisma/client"; // ✅ Import Prisma types
+import type { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ type UpdateBody = {
 
 type PrismaLikeError = { code?: string };
 
+// PATCH (already had this)
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -27,7 +29,6 @@ export async function PATCH(
   const { id } = await context.params;
   const body = (await req.json()) as Partial<UpdateBody>;
 
-  // Build data object with proper type
   const data: Prisma.TeamMemberUpdateInput = {};
   if (body.name !== undefined) data.name = String(body.name);
   if (body.email !== undefined) data.email = String(body.email).toLowerCase();
@@ -50,7 +51,7 @@ export async function PATCH(
   try {
     const updated = await prisma.teamMember.update({
       where: { id },
-      data, // ✅ fully typed with Prisma.TeamMemberUpdateInput
+      data,
       select: {
         id: true,
         createdAt: true,
@@ -73,5 +74,25 @@ export async function PATCH(
       );
     }
     return NextResponse.json({ ok: false, error: "Not found or server error" }, { status: 500 });
+  }
+}
+
+// ✅ ADD THIS
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id } = await context.params;
+
+  try {
+    await prisma.teamMember.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (err: unknown) {
+    // Not found
+    if ((err as PrismaLikeError)?.code === "P2025") {
+      return NextResponse.json({ ok: false, error: "Member not found." }, { status: 404 });
+    }
+    // FK constraint etc.
+    return NextResponse.json({ ok: false, error: "Delete failed." }, { status: 500 });
   }
 }

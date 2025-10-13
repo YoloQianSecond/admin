@@ -41,7 +41,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, code }),
       });
       if (res.ok) {
-        window.location.href = "/admin"; // full reload so SSR sees cookie
+        window.location.href = "/admin/teams"; // full reload so SSR sees cookie
       } else {
         const data = await res.json();
         setMsg(data.error || "Invalid or expired code");

@@ -25,7 +25,7 @@ return (
 </Link> */}
 <Link href="/admin/teams" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Teams</Link>
 <Link href="/admin/news" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">News</Link>
-<Link href="/admin/format-schedule" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Format Schedule</Link>
+{/* <Link href="/admin/format-schedule" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Format Schedule</Link> */}
 <Link href="/admin/partners" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Partners</Link>
 <Link href="/admin/match-schedule" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Match Schedule</Link>
 <Link href="/admin/grand-finals" className="px-3 py-2 rounded-md hover:bg-accent flex items-center gap-2">Grand Finals</Link>

@@ -1,73 +1,50 @@
-// prisma/schema.prisma
-// Purpose: Minimal models for TeamMember and NewsPost.
-// NOTE: For PII with Azure Always Encrypted, add column encryption at the DB level later.
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite" // switch to "sqlserver" for Azure SQL later
+  provider = "sqlserver"
   url      = env("DATABASE_URL")
 }
 
-enum MemberRole {
-  LEADER
-  MEMBER
-  SUBSTITUTE
-  COACH
-}
-
 model TeamMember {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Non-sensitive
-  name      String
-  email     String  @unique
-  teamName  String?
-  teamTricode  String?
-  discordId String?
-  gameId    String? // e.g., Steam ID / in-game ID
-  role      MemberRole @default(MEMBER)
-
-  // Sensitive (collect only for winners). For dev we store plaintext; on Azure SQL enforce Always Encrypted.
-  passportId  String? // AE later
-  nationalId  String? // AE later
-  bankDetails String? // AE later
-  phone       String? // AE later
+  id          String     @id @default(cuid())
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  name        String
+  email       String     @unique
+  teamName    String?
+  teamTricode String?
+  discordId   String?
+  gameId      String?
+  role        String @default("MEMBER")
+  passportId  String?
+  nationalId  String?
+  bankDetails String?
+  phone       String?
 }
 
 model NewsPost {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   title       String
-  description String   // short summary for cards
-  entity      String?  // e.g. "Tournament Director"
-  link        String?  // optional "Read More" URL (external or internal)
-  date        DateTime?   // <-- manual input for display date
+  description String
+  entity      String?
+  link        String?
+  date        DateTime?
   published   Boolean   @default(false)
   publishedAt DateTime?
-
-  // Image stored directly in DB
-  imageData Bytes? // SQLite -> BLOB, SQL Server -> VARBINARY(MAX)
-  imageMime String? // e.g., "image/png", "image/jpeg"
+  imageData   Bytes?
+  imageMime   String?
 }
 
 model FormatScheduleItem {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Admin-only label
   title     String
-  // Optional hyperlink when image is clicked on frontend
   link      String?
-
-  // Image stored in DB
   imageData Bytes?
   imageMime String?
 }
@@ -76,10 +53,8 @@ model Partner {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   title     String
   link      String?
-
   imageData Bytes?
   imageMime String?
 }
@@ -88,10 +63,8 @@ model GrandFinal {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   title     String
   link      String?
-
   imageData Bytes?
   imageMime String?
 }
@@ -100,20 +73,17 @@ model Promotion {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   title     String
   link      String?
-
   imageData Bytes?
   imageMime String?
 }
 
 model MatchSchedule {
-  id         String   @id @default(cuid())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  title      String
-  matchDate  DateTime   // use date-only in UI; stored as DateTime
-  liveLink   String?    // optional "Watch Live" hyperlink
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  title     String
+  matchDate DateTime
+  liveLink  String?
 }

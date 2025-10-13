@@ -1,74 +1,81 @@
 // src/lib/mail.ts
-// Gmail SMTP mailer with Nodemailer + full logging
+// Microsoft Graph (OAuth2) mailer — no SMTP, MFA-safe
 
-import nodemailer from "nodemailer";
+import "isomorphic-fetch";
+import { Client } from "@microsoft/microsoft-graph-client";
+import { ClientSecretCredential } from "@azure/identity";
 
-const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
-const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
-const SMTP_SECURE = String(process.env.SMTP_SECURE || "true") === "true"; // true for 465, false for 587
-const SMTP_USER = process.env.SMTP_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || "";
-const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER || "no-reply@example.com";
+// ---- Required env (Graph client credentials) ----
+const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
+const MS_CLIENT_ID = process.env.MS_CLIENT_ID || "";
+const MS_CLIENT_SECRET = process.env.MS_CLIENT_SECRET || "";
+const MAIL_SENDER = process.env.MAIL_SENDER || ""; // e.g. support@yourdomain.com
+
+// ---- Optional branding / admin ----
+const FROM_NAME = process.env.FROM_NAME || "Odyssey Cup"; // display name
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
 
-// ---------------- SMTP Transport Setup ----------------
-let transporter: nodemailer.Transporter | null = null;
+// Lazily-initialized Graph client
+let graphClient: Client | null = null;
 
-function getTransporter(): nodemailer.Transporter | null {
-  if (transporter) return transporter;
+function getGraph(): Client | null {
+  if (graphClient) return graphClient;
 
-  if (!SMTP_USER || !SMTP_PASS) {
-    console.warn("[mail] SMTP_USER or SMTP_PASS missing — emails will be logged only");
+  if (!MS_TENANT_ID || !MS_CLIENT_ID || !MS_CLIENT_SECRET || !MAIL_SENDER) {
+    console.warn(
+      "[mail-graph] Missing MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET / MAIL_SENDER — emails will be logged only"
+    );
     return null;
   }
 
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
+  const credential = new ClientSecretCredential(MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET);
+
+  graphClient = Client.initWithMiddleware({
+    authProvider: {
+      getAccessToken: async () => {
+        const token = await credential.getToken("https://graph.microsoft.com/.default");
+        if (!token?.token) throw new Error("Failed to acquire Graph access token");
+        return token.token;
+      },
     },
   });
 
-  // Verify connection at startup
-  transporter.verify((err) => {
-    if (err) {
-      console.error("[mail] SMTP connection failed:", err);
-    } else {
-      console.log("[mail] SMTP connection OK");
-    }
-  });
-
-  return transporter;
+  return graphClient;
 }
 
-// ---------------- Generic Send Wrapper ----------------
+// ---------------- Generic Send Wrapper (Graph) ----------------
 async function sendEmailRaw(to: string, subject: string, html: string) {
   if (!to) return;
 
-  const tx = getTransporter();
-  if (!tx) {
+  const client = getGraph();
+  if (!client) {
     // Dev fallback: just log instead of sending
     console.log(`[mail:dev] To=${to} | Subject="${subject}"`);
     return;
   }
 
   try {
-    const info = await tx.sendMail({
-      from: `Odyssey Cup <${FROM_EMAIL}>`,
-      to,
+    const message = {
       subject,
-      html,
+      body: { contentType: "HTML", content: html },
+      toRecipients: [{ emailAddress: { address: to } }],
+      from: { emailAddress: { name: FROM_NAME, address: MAIL_SENDER } }, // display name
+      // If you need reply-to that differs from sender, uncomment:
+      // replyTo: [{ emailAddress: { address: "hello@yourbrand.com" } }],
+    };
+
+    await client.api(`/users/${encodeURIComponent(MAIL_SENDER)}/sendMail`).post({
+      message,
+      saveToSentItems: true,
     });
-    console.log(`[mail] Sent: ${subject} → ${to} (id=${info.messageId})`);
-  } catch (err) {
-    console.error("[mail] Send failed:", err);
+
+    console.log(`[mail] Graph sent: ${subject} → ${to}`);
+  } catch (err: any) {
+    console.error("[mail] Graph send failed:", err?.message || err);
   }
 }
 
-// ---------------- High-Level Functions ----------------
+// ---------------- High-Level Functions (unchanged API) ----------------
 export async function sendRegistrationEmail(to: string, teamName: string, tricode: string) {
   const subject = `You're registered: ${teamName} (${tricode})`;
   const html = `
