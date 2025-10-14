@@ -2,6 +2,7 @@
 import { Client } from "@microsoft/microsoft-graph-client";
 import { ClientSecretCredential } from "@azure/identity";
 import "isomorphic-fetch";
+import type { Message, Recipient } from "@microsoft/microsoft-graph-types";
 
 const TENANT_ID = process.env.MS_TENANT_ID!;
 const CLIENT_ID = process.env.MS_CLIENT_ID!;
@@ -27,31 +28,44 @@ function graphClient(): Client {
   });
 }
 
-export async function sendMailGraph(to: string, subject: string, html: string, opts?: {
-  cc?: string[];
-  bcc?: string[];
-  replyTo?: string;
-  saveToSentItems?: boolean;
-}) {
+export async function sendMailGraph(
+  to: string,
+  subject: string,
+  html: string,
+  opts?: {
+    cc?: string[];
+    bcc?: string[];
+    replyTo?: string;
+    saveToSentItems?: boolean;
+  }
+) {
   const client = graphClient();
-  const toRecipients = (to ? [to] : []).map(a => ({ emailAddress: { address: a } }));
-  const ccRecipients = (opts?.cc ?? []).map(a => ({ emailAddress: { address: a } }));
-  const bccRecipients = (opts?.bcc ?? []).map(a => ({ emailAddress: { address: a } }));
 
-  const message: any = {
+  const toRecipients: Recipient[] = (to ? [to] : []).map(a => ({
+    emailAddress: { address: a },
+  }));
+  const ccRecipients: Recipient[] = (opts?.cc ?? []).map(a => ({
+    emailAddress: { address: a },
+  }));
+  const bccRecipients: Recipient[] = (opts?.bcc ?? []).map(a => ({
+    emailAddress: { address: a },
+  }));
+
+  const message: Message = {
     subject,
-    body: { contentType: "HTML", content: html },
+    // Note: msgraph types expect "text" | "html" (lowercase)
+    body: { contentType: "html", content: html },
     toRecipients,
+    ...(ccRecipients.length ? { ccRecipients } : {}),
+    ...(bccRecipients.length ? { bccRecipients } : {}),
+    ...(opts?.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
   };
-  if (ccRecipients.length) message.ccRecipients = ccRecipients;
-  if (bccRecipients.length) message.bccRecipients = bccRecipients;
-  if (opts?.replyTo) message.replyTo = [{ emailAddress: { address: opts.replyTo } }];
 
   const saveToSentItems = opts?.saveToSentItems ?? true;
 
-  await client.api(`/users/${encodeURIComponent(MAIL_SENDER)}/sendMail`).post({
-    message,
-    saveToSentItems,
-  });
+  await client
+    .api(`/users/${encodeURIComponent(MAIL_SENDER)}/sendMail`)
+    .post({ message, saveToSentItems });
+
   console.log(`[mail] Graph sent: ${subject} → ${to}`);
 }

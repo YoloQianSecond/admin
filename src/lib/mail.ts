@@ -4,6 +4,7 @@
 import "isomorphic-fetch";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { ClientSecretCredential } from "@azure/identity";
+import type { Message, Recipient } from "@microsoft/microsoft-graph-types"; // <- add
 
 // ---- Required env (Graph client credentials) ----
 const MS_TENANT_ID = process.env.MS_TENANT_ID || "";
@@ -55,11 +56,14 @@ async function sendEmailRaw(to: string, subject: string, html: string) {
   }
 
   try {
-    const message = {
+    const toRecipients: Recipient[] = [{ emailAddress: { address: to } }];
+
+    const message: Message = {
       subject,
-      body: { contentType: "HTML", content: html },
-      toRecipients: [{ emailAddress: { address: to } }],
-      from: { emailAddress: { name: FROM_NAME, address: MAIL_SENDER } }, // display name
+      // Graph types expect lowercase "html" | "text"
+      body: { contentType: "html", content: html },
+      toRecipients,
+      from: { emailAddress: { name: FROM_NAME, address: MAIL_SENDER } },
       // If you need reply-to that differs from sender, uncomment:
       // replyTo: [{ emailAddress: { address: "hello@yourbrand.com" } }],
     };
@@ -70,8 +74,10 @@ async function sendEmailRaw(to: string, subject: string, html: string) {
     });
 
     console.log(`[mail] Graph sent: ${subject} → ${to}`);
-  } catch (err: any) {
-    console.error("[mail] Graph send failed:", err?.message || err);
+  } catch (err: unknown) {
+    // Narrow unknown safely for logging
+    const msg = err instanceof Error ? err.message : JSON.stringify(err);
+    console.error("[mail] Graph send failed:", msg);
   }
 }
 

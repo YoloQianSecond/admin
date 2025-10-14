@@ -1,7 +1,9 @@
+// src/app/api/teams/register/route.ts
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { withCors, corsPreflight } from "@/lib/cors";
-import { Prisma, MemberRole } from "@prisma/client";
+import { Prisma } from "@prisma/client"; // only for error typing (P2002)
 import { sendRegistrationEmail, sendAdminDigest } from "@/lib/mail";
 
 export const runtime = "nodejs";
@@ -12,6 +14,9 @@ export async function OPTIONS() {
 }
 
 const emailRe = /\S+@\S+\.\S+/;
+
+// Local string-union type used purely in TS (DB stores string)
+type MemberRole = "LEADER" | "MEMBER" | "SUBSTITUTE" | "COACH";
 
 function isValidRole(role: string | null | undefined): role is MemberRole {
   const r = (role ?? "").toString().toUpperCase();
@@ -29,7 +34,8 @@ export async function POST(req: Request) {
     const name = String(body.name ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const teamName = (body.teamName ? String(body.teamName).trim() : "") || null;
-    const teamTricode = (body.teamTricode ? String(body.teamTricode).trim().toUpperCase() : "") || null;
+    const teamTricode =
+      (body.teamTricode ? String(body.teamTricode).trim().toUpperCase() : "") || null;
     const discordId = (body.discordId ? String(body.discordId).trim() : "") || null;
     const gameId = (body.gameId ? String(body.gameId).trim() : "") || null;
 
@@ -38,18 +44,19 @@ export async function POST(req: Request) {
 
     // ---- Validation ----
     if (!name) {
-      return withCors(NextResponse.json({ ok: false, error: "name is required" }, { status: 400 }));
+      return withCors(
+        NextResponse.json({ ok: false, error: "name is required" }, { status: 400 })
+      );
     }
     if (!email || !emailRe.test(email)) {
-      return withCors(NextResponse.json({ ok: false, error: "valid email is required" }, { status: 400 }));
+      return withCors(
+        NextResponse.json({ ok: false, error: "valid email is required" }, { status: 400 })
+      );
     }
     if (teamTricode && teamTricode.length !== 3) {
       return withCors(
         NextResponse.json({ ok: false, error: "teamTricode must be 3 chars" }, { status: 400 })
       );
-    }
-    if (!isValidRole(role)) {
-      return withCors(NextResponse.json({ ok: false, error: "invalid role" }, { status: 400 }));
     }
 
     // Only one coach per team (when a tricode is provided)
@@ -60,14 +67,17 @@ export async function POST(req: Request) {
       });
       if (existingCoach) {
         return withCors(
-          NextResponse.json({ ok: false, error: "Coach already exists for this team" }, { status: 409 })
+          NextResponse.json(
+            { ok: false, error: "Coach already exists for this team" },
+            { status: 409 }
+          )
         );
       }
     }
 
     // ---- Insert ----
     const created = await prisma.teamMember.create({
-      data: { name, email, teamName, teamTricode, discordId, gameId, role },
+      data: { name, email, teamName, teamTricode, discordId, gameId, role }, // role is a string column
       select: { id: true, teamName: true, teamTricode: true, email: true },
     });
 
