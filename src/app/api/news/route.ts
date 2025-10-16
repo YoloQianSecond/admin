@@ -49,8 +49,11 @@ export async function OPTIONS() {
 
     return NextResponse.json(
       {
-        ok: true,
-        posts: items.map((p) => ({ ...p, hasImage: !!p.imageMime })),
+      ok: true,
+      posts: items.map((p: typeof items[number]) => ({
+        ...p,
+        hasImage: !!p.imageMime,
+      })),
       },
       { headers: { "Access-Control-Allow-Origin": ORIGIN, "Vary": "Origin" } }
     );
