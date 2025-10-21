@@ -1,8 +1,14 @@
+// src/app/api/teams/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { withCors, corsPreflight } from "@/lib/cors";
-import { Prisma } from "@prisma/client"; // keep only for error typing (P2002)
 import { sendRegistrationEmail, sendAdminDigest } from "@/lib/mail";
+
+// AE-aware helpers
+import {
+  insertTeamMemberAE,
+  isSqlDuplicateError,
+} from "@/lib/ae-mssql";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,28 +19,21 @@ export async function OPTIONS() {
 
 const emailRe = /\S+@\S+\.\S+/;
 
-// Role is stored as a plain string in DB — define a local TS type
 type MemberRole = "LEADER" | "MEMBER" | "SUBSTITUTE" | "COACH";
-
 function isValidRole(role: string | null | undefined): role is MemberRole {
   const r = (role ?? "").toString().toUpperCase();
   return r === "LEADER" || r === "MEMBER" || r === "SUBSTITUTE" || r === "COACH";
 }
 
-function isP2002(e: unknown): e is Prisma.PrismaClientKnownRequestError {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
-}
-
 export async function GET() {
   try {
+    // ⚠️ Do not select AE columns (name, email, passportId, etc.) with Prisma.
     const members = await prisma.teamMember.findMany({
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
         createdAt: true,
         updatedAt: true,
-        name: true,
-        email: true,
         teamName: true,
         teamTricode: true,
         discordId: true,
@@ -101,8 +100,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ---- Team-level constraints ----
-    // Only one coach per team
+    // ---- Team-level constraints (safe with Prisma: non-AE columns) ----
     if (role === "COACH" && teamTricode) {
       const existingCoach = await prisma.teamMember.findFirst({
         where: { teamTricode, role: "COACH" },
@@ -110,12 +108,14 @@ export async function POST(req: Request) {
       });
       if (existingCoach) {
         return withCors(
-          NextResponse.json({ ok: false, error: "Coach already exists for this team" }, { status: 409 })
+          NextResponse.json(
+            { ok: false, error: "Coach already exists for this team" },
+            { status: 409 }
+          )
         );
       }
     }
 
-    // Only one leader (captain) per team
     if (role === "LEADER" && teamTricode) {
       const existingLeader = await prisma.teamMember.findFirst({
         where: { teamTricode, role: "LEADER" },
@@ -131,24 +131,33 @@ export async function POST(req: Request) {
       }
     }
 
-    // ---- Insert ----
-    const created = await prisma.teamMember.create({
-      data: { name, email, teamName, teamTricode, discordId, gameId, role }, // role is a string column
-      select: { id: true, teamName: true, teamTricode: true, email: true },
+    // ---- Insert via AE-aware path (handles encrypted columns) ----
+    const insertedId = await insertTeamMemberAE({
+      name,
+      email,
+      teamName,
+      teamTricode,
+      discordId,
+      gameId,
+      role,
+      passportId: body.passportId ?? null,
+      nationalId: body.nationalId ?? null,
+      bankDetails: body.bankDetails ?? null,
+      phone: body.phone ?? null,
     });
 
     // ---- Emails (non-blocking) ----
     Promise.allSettled([
-      sendRegistrationEmail(created.email, created.teamName ?? "", created.teamTricode ?? ""),
-      sendAdminDigest([created.email], created.teamName ?? "", created.teamTricode ?? ""),
+      sendRegistrationEmail(email, teamName ?? "", teamTricode ?? ""),
+      sendAdminDigest([email], teamName ?? "", teamTricode ?? ""),
     ]).catch((e) => console.error("Email send error (single):", e));
 
-    return withCors(NextResponse.json({ ok: true, member: { id: created.id } }));
+    return withCors(NextResponse.json({ ok: true, member: { id: insertedId } }));
   } catch (err: unknown) {
-    if (isP2002(err)) {
+    if (isSqlDuplicateError(err)) {
       return withCors(
         NextResponse.json(
-          { ok: false, error: "Duplicate email. Player have already registered" },
+          { ok: false, error: "Duplicate email. Each email must be unique." },
           { status: 409 }
         )
       );

@@ -39,7 +39,7 @@ const ROLE_CLASS: Record<MemberRole, string> = {
     "bg-sky-100 text-sky-800 border border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-700/50",
 };
 
-const TEAMS_PER_PAGE = 2;
+const TEAMS_PER_PAGE = 5;
 
 export default function TeamsPage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -321,7 +321,7 @@ export default function TeamsPage() {
           const sorted = [...t.members].sort((a, b) => {
             const r = roleSort(a.role, b.role);
             if (r !== 0) return r;
-            return a.name.localeCompare(b.name);
+            return (a.name ?? "").localeCompare(b.name ?? "");
           });
 
           const header = t.tricode

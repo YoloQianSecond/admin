@@ -1,10 +1,15 @@
 // src/app/api/teams/register/route.ts
-
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { withCors, corsPreflight } from "@/lib/cors";
-import { Prisma } from "@prisma/client"; // only for error typing (P2002)
 import { sendRegistrationEmail, sendAdminDigest } from "@/lib/mail";
+
+// AE-aware helpers
+import {
+  insertTeamMemberAE,
+  existsRoleForTeamAE,
+  isSqlDuplicateError,
+  TRICODE_LEN,
+} from "@/lib/ae-mssql";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,16 +20,10 @@ export async function OPTIONS() {
 
 const emailRe = /\S+@\S+\.\S+/;
 
-// Local string-union type used purely in TS (DB stores string)
 type MemberRole = "LEADER" | "MEMBER" | "SUBSTITUTE" | "COACH";
-
 function isValidRole(role: string | null | undefined): role is MemberRole {
   const r = (role ?? "").toString().toUpperCase();
   return r === "LEADER" || r === "MEMBER" || r === "SUBSTITUTE" || r === "COACH";
-}
-
-function isP2002(e: unknown): e is Prisma.PrismaClientKnownRequestError {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 }
 
 export async function POST(req: Request) {
@@ -34,8 +33,8 @@ export async function POST(req: Request) {
     const name = String(body.name ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const teamName = (body.teamName ? String(body.teamName).trim() : "") || null;
-    const teamTricode =
-      (body.teamTricode ? String(body.teamTricode).trim().toUpperCase() : "") || null;
+    const teamTricodeRaw = (body.teamTricode ? String(body.teamTricode).trim() : "") || "";
+    const teamTricode = teamTricodeRaw ? teamTricodeRaw.toUpperCase() : null;
     const discordId = (body.discordId ? String(body.discordId).trim() : "") || null;
     const gameId = (body.gameId ? String(body.gameId).trim() : "") || null;
 
@@ -45,59 +44,84 @@ export async function POST(req: Request) {
     // ---- Validation ----
     if (!name) {
       return withCors(
-        NextResponse.json({ ok: false, error: "name is required" }, { status: 400 })
+        NextResponse.json({ ok: false, error: "name is required" }, { status: 400 }),
       );
     }
     if (!email || !emailRe.test(email)) {
       return withCors(
-        NextResponse.json({ ok: false, error: "valid email is required" }, { status: 400 })
+        NextResponse.json({ ok: false, error: "valid email is required" }, { status: 400 }),
       );
     }
-    if (teamTricode && teamTricode.length !== 3) {
+    if (teamTricode && teamTricode.length !== TRICODE_LEN) {
       return withCors(
-        NextResponse.json({ ok: false, error: "teamTricode must be 3 chars" }, { status: 400 })
+        NextResponse.json(
+          { ok: false, error: `teamTricode must be ${TRICODE_LEN} chars` },
+          { status: 400 },
+        ),
       );
     }
 
-    // Only one coach per team (when a tricode is provided)
+    // ---- One coach per team (if tricode provided) ----
     if (role === "COACH" && teamTricode) {
-      const existingCoach = await prisma.teamMember.findFirst({
-        where: { teamTricode, role: "COACH" },
-        select: { id: true },
-      });
-      if (existingCoach) {
+      const existsCoach = await existsRoleForTeamAE(teamTricode, "COACH");
+      if (existsCoach) {
         return withCors(
           NextResponse.json(
             { ok: false, error: "Coach already exists for this team" },
-            { status: 409 }
-          )
+            { status: 409 },
+          ),
         );
       }
     }
 
-    // ---- Insert ----
-    const created = await prisma.teamMember.create({
-      data: { name, email, teamName, teamTricode, discordId, gameId, role }, // role is a string column
-      select: { id: true, teamName: true, teamTricode: true, email: true },
+    // ---- One captain (LEADER) per team (if tricode provided) ----
+    if (role === "LEADER" && teamTricode) {
+      const existsLeader = await existsRoleForTeamAE(teamTricode, "LEADER");
+      if (existsLeader) {
+        return withCors(
+          NextResponse.json(
+            { ok: false, error: "Captain already exists for this team" },
+            { status: 409 },
+          ),
+        );
+      }
+    }
+
+    // ---- Insert via AE-aware path ----
+    const insertedId = await insertTeamMemberAE({
+      name,
+      email,
+      teamName,
+      teamTricode,
+      discordId,
+      gameId,
+      role,
+      passportId: body.passportId ?? null,
+      nationalId: body.nationalId ?? null,
+      bankDetails: body.bankDetails ?? null,
+      phone: body.phone ?? null,
     });
 
     // ---- Emails (non-blocking) ----
     Promise.allSettled([
-      sendRegistrationEmail(created.email, created.teamName ?? "", created.teamTricode ?? ""),
-      sendAdminDigest([created.email], created.teamName ?? "", created.teamTricode ?? ""),
-    ]).catch((e) => console.error("Email send error (single):", e));
+      sendRegistrationEmail(email, teamName ?? "", teamTricode ?? ""),
+      sendAdminDigest([email], teamName ?? "", teamTricode ?? ""),
+    ]).catch((e: unknown) => console.error("Email send error (single):", e));
 
-    return withCors(NextResponse.json({ ok: true, member: { id: created.id } }));
+    return withCors(NextResponse.json({ ok: true, member: { id: insertedId } }));
   } catch (err: unknown) {
-    if (isP2002(err)) {
+    // Map SQL duplicate key to clean 409
+    if (isSqlDuplicateError(err)) {
       return withCors(
         NextResponse.json(
           { ok: false, error: "Duplicate email. Each email must be unique." },
-          { status: 409 }
-        )
+          { status: 409 },
+        ),
       );
     }
-    console.error("Teams Register POST error:", err);
+
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Teams Register POST AE error:", msg, err);
     return withCors(NextResponse.json({ ok: false, error: "Server error" }, { status: 500 }));
   }
 }
