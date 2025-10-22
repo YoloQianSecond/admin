@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@azure/identity": "^4.13.0",
+    "@azure/keyvault-keys": "^4.10.0",
     "@azure/keyvault-secrets": "^4.10.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@prisma/client": "^6.16.2",
@@ -19,6 +20,7 @@
     "@react-email/render": "^1.2.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^17.2.3",
     "isomorphic-fetch": "^3.0.0",
     "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
@@ -26,6 +28,7 @@
     "mssql": "^12.0.0",
     "next": "15.5.3",
     "nodemailer": "^7.0.6",
+    "odbc": "^2.4.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "resend": "^6.1.0",

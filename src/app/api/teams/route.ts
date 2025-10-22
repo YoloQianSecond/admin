@@ -1,14 +1,9 @@
-// src/app/api/teams/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { withCors, corsPreflight } from "@/lib/cors";
 import { sendRegistrationEmail, sendAdminDigest } from "@/lib/mail";
 
-// AE-aware helpers
-import {
-  insertTeamMemberAE,
-  isSqlDuplicateError,
-} from "@/lib/ae-mssql";
+// ✅ ODBC AE-aware helpers
+import { insertTeamMemberAE, readAllTeamMembers } from "@/lib/odbc-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,22 +20,36 @@ function isValidRole(role: string | null | undefined): role is MemberRole {
   return r === "LEADER" || r === "MEMBER" || r === "SUBSTITUTE" || r === "COACH";
 }
 
+/** 🔁 Helper: detect SQL duplicate-type numbers */
+type SqlishError = {
+  number?: number;
+  errno?: number;
+  code?: number;
+  originalError?: {
+    info?: { number?: number };
+    number?: number;
+  };
+};
+
+function getSqlErrorNumber(err: unknown): number | undefined {
+  const e = err as SqlishError;
+  return (
+    e?.number ??
+    e?.errno ??
+    e?.code ??
+    e?.originalError?.info?.number ??
+    e?.originalError?.number
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                   GET                                      */
+/* -------------------------------------------------------------------------- */
+
 export async function GET() {
   try {
-    // ⚠️ Do not select AE columns (name, email, passportId, etc.) with Prisma.
-    const members = await prisma.teamMember.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        teamName: true,
-        teamTricode: true,
-        discordId: true,
-        gameId: true,
-        role: true,
-      },
-    });
+    // ✅ Use ODBC to decrypt AE fields like name/email
+    const members = await readAllTeamMembers();
 
     return withCors(
       NextResponse.json(
@@ -56,9 +65,15 @@ export async function GET() {
     );
   } catch (err) {
     console.error("Teams GET error:", err);
-    return withCors(NextResponse.json({ ok: false, error: "Server error" }, { status: 500 }));
+    return withCors(
+      NextResponse.json({ ok: false, error: "Server error" }, { status: 500 })
+    );
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                   POST                                     */
+/* -------------------------------------------------------------------------- */
 
 export async function POST(req: Request) {
   try {
@@ -77,7 +92,9 @@ export async function POST(req: Request) {
 
     // ---- Validation ----
     if (!name) {
-      return withCors(NextResponse.json({ ok: false, error: "name is required" }, { status: 400 }));
+      return withCors(
+        NextResponse.json({ ok: false, error: "name is required" }, { status: 400 })
+      );
     }
     if (!email || !emailRe.test(email)) {
       return withCors(
@@ -86,11 +103,12 @@ export async function POST(req: Request) {
     }
     if (teamTricode && teamTricode.length !== 3) {
       return withCors(
-        NextResponse.json({ ok: false, error: "teamTricode must be 3 chars" }, { status: 400 })
+        NextResponse.json(
+          { ok: false, error: "teamTricode must be 3 chars" },
+          { status: 400 }
+        )
       );
     }
-
-    // Leaders/Coaches must specify teamTricode so we can enforce uniqueness
     if ((role === "LEADER" || role === "COACH") && !teamTricode) {
       return withCors(
         NextResponse.json(
@@ -100,38 +118,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ---- Team-level constraints (safe with Prisma: non-AE columns) ----
-    if (role === "COACH" && teamTricode) {
-      const existingCoach = await prisma.teamMember.findFirst({
-        where: { teamTricode, role: "COACH" },
-        select: { id: true },
-      });
-      if (existingCoach) {
-        return withCors(
-          NextResponse.json(
-            { ok: false, error: "Coach already exists for this team" },
-            { status: 409 }
-          )
-        );
-      }
-    }
-
-    if (role === "LEADER" && teamTricode) {
-      const existingLeader = await prisma.teamMember.findFirst({
-        where: { teamTricode, role: "LEADER" },
-        select: { id: true },
-      });
-      if (existingLeader) {
-        return withCors(
-          NextResponse.json(
-            { ok: false, error: "Team captain (leader) already exists for this team" },
-            { status: 409 }
-          )
-        );
-      }
-    }
-
-    // ---- Insert via AE-aware path (handles encrypted columns) ----
+    // ---- Insert (AE-aware) ----
     const insertedId = await insertTeamMemberAE({
       name,
       email,
@@ -146,15 +133,19 @@ export async function POST(req: Request) {
       phone: body.phone ?? null,
     });
 
-    // ---- Emails (non-blocking) ----
+    // ---- Async mail notifications ----
     Promise.allSettled([
       sendRegistrationEmail(email, teamName ?? "", teamTricode ?? ""),
       sendAdminDigest([email], teamName ?? "", teamTricode ?? ""),
     ]).catch((e) => console.error("Email send error (single):", e));
 
-    return withCors(NextResponse.json({ ok: true, member: { id: insertedId } }));
+    return withCors(NextResponse.json({ ok: true, id: insertedId }));
   } catch (err: unknown) {
-    if (isSqlDuplicateError(err)) {
+    const code = getSqlErrorNumber(err);
+    const message = (err as Error)?.message || "Server error";
+
+    // Handle specific messages for duplicates and roles
+    if (code === 2627 && message.includes("Duplicate email")) {
       return withCors(
         NextResponse.json(
           { ok: false, error: "Duplicate email. Each email must be unique." },
@@ -162,7 +153,26 @@ export async function POST(req: Request) {
         )
       );
     }
-    console.error("Teams POST error:", err);
-    return withCors(NextResponse.json({ ok: false, error: "Server error" }, { status: 500 }));
+    if (code === 2601 && message.includes("COACH")) {
+      return withCors(
+        NextResponse.json(
+          { ok: false, error: "Coach already exists for this team" },
+          { status: 409 }
+        )
+      );
+    }
+    if (code === 2601 && message.includes("LEADER")) {
+      return withCors(
+        NextResponse.json(
+          { ok: false, error: "Team captain (leader) already exists for this team" },
+          { status: 409 }
+        )
+      );
+    }
+
+    console.error("Teams POST error:", message, err);
+    return withCors(
+      NextResponse.json({ ok: false, error: message }, { status: 500 })
+    );
   }
 }

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  serverExternalPackages: ['odbc', '@mapbox/node-pre-gyp', 'node-addon-api'],
   output: "standalone",
   async redirects() {
     return [

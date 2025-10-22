@@ -1,15 +1,7 @@
-// src/app/api/teams/register/route.ts
 import { NextResponse } from "next/server";
 import { withCors, corsPreflight } from "@/lib/cors";
 import { sendRegistrationEmail, sendAdminDigest } from "@/lib/mail";
-
-// AE-aware helpers
-import {
-  insertTeamMemberAE,
-  existsRoleForTeamAE,
-  isSqlDuplicateError,
-  TRICODE_LEN,
-} from "@/lib/ae-mssql";
+import { insertTeamMemberAE } from "@/lib/odbc-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +17,29 @@ function isValidRole(role: string | null | undefined): role is MemberRole {
   const r = (role ?? "").toString().toUpperCase();
   return r === "LEADER" || r === "MEMBER" || r === "SUBSTITUTE" || r === "COACH";
 }
+
+/** 🔍 Extract numeric SQL error code */
+type SqlishError = {
+  number?: number;
+  errno?: number;
+  code?: number;
+  originalError?: {
+    info?: { number?: number };
+    number?: number;
+  };
+};
+
+function getSqlErrorNumber(err: unknown): number | undefined {
+  const e = err as SqlishError;
+  return (
+    e?.number ??
+    e?.errno ??
+    e?.code ??
+    e?.originalError?.info?.number ??
+    e?.originalError?.number
+  );
+}
+
 
 export async function POST(req: Request) {
   try {
@@ -52,42 +67,25 @@ export async function POST(req: Request) {
         NextResponse.json({ ok: false, error: "valid email is required" }, { status: 400 }),
       );
     }
-    if (teamTricode && teamTricode.length !== TRICODE_LEN) {
+    if (teamTricode && teamTricode.length !== 3) {
       return withCors(
         NextResponse.json(
-          { ok: false, error: `teamTricode must be ${TRICODE_LEN} chars` },
+          { ok: false, error: "teamTricode must be 3 chars" },
           { status: 400 },
         ),
       );
     }
 
-    // ---- One coach per team (if tricode provided) ----
-    if (role === "COACH" && teamTricode) {
-      const existsCoach = await existsRoleForTeamAE(teamTricode, "COACH");
-      if (existsCoach) {
-        return withCors(
-          NextResponse.json(
-            { ok: false, error: "Coach already exists for this team" },
-            { status: 409 },
-          ),
-        );
-      }
+    if ((role === "LEADER" || role === "COACH") && !teamTricode) {
+      return withCors(
+        NextResponse.json(
+          { ok: false, error: "teamTricode is required for LEADER and COACH roles" },
+          { status: 400 },
+        ),
+      );
     }
 
-    // ---- One captain (LEADER) per team (if tricode provided) ----
-    if (role === "LEADER" && teamTricode) {
-      const existsLeader = await existsRoleForTeamAE(teamTricode, "LEADER");
-      if (existsLeader) {
-        return withCors(
-          NextResponse.json(
-            { ok: false, error: "Captain already exists for this team" },
-            { status: 409 },
-          ),
-        );
-      }
-    }
-
-    // ---- Insert via AE-aware path ----
+    // ---- Insert via ODBC AE-aware path ----
     const insertedId = await insertTeamMemberAE({
       name,
       email,
@@ -106,12 +104,15 @@ export async function POST(req: Request) {
     Promise.allSettled([
       sendRegistrationEmail(email, teamName ?? "", teamTricode ?? ""),
       sendAdminDigest([email], teamName ?? "", teamTricode ?? ""),
-    ]).catch((e: unknown) => console.error("Email send error (single):", e));
+    ]).catch((e) => console.error("Email send error (single):", e));
 
-    return withCors(NextResponse.json({ ok: true, member: { id: insertedId } }));
+    return withCors(NextResponse.json({ ok: true, id: insertedId }));
   } catch (err: unknown) {
-    // Map SQL duplicate key to clean 409
-    if (isSqlDuplicateError(err)) {
+    const code = getSqlErrorNumber(err);
+    const message = (err as Error)?.message || "Server error";
+
+    // 🎯 More accurate error mapping
+    if (code === 2627 && message.includes("Duplicate email")) {
       return withCors(
         NextResponse.json(
           { ok: false, error: "Duplicate email. Each email must be unique." },
@@ -120,8 +121,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("Teams Register POST AE error:", msg, err);
-    return withCors(NextResponse.json({ ok: false, error: "Server error" }, { status: 500 }));
+    if (code === 2601 && message.includes("COACH")) {
+      return withCors(
+        NextResponse.json({ ok: false, error: "Coach already exists for this team" }, { status: 409 }),
+      );
+    }
+
+    if (code === 2601 && message.includes("LEADER")) {
+      return withCors(
+        NextResponse.json(
+          { ok: false, error: "Team captain (leader) already exists for this team" },
+          { status: 409 },
+        ),
+      );
+    }
+
+    console.error("Teams Register POST AE error:", message, err);
+    return withCors(NextResponse.json({ ok: false, error: message }, { status: 500 }));
   }
 }

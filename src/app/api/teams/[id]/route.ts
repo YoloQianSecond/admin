@@ -1,7 +1,9 @@
-// app/api/teams/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import type { Prisma } from "@prisma/client";
+import { withCors, corsPreflight } from "@/lib/cors";
+import {
+  updateTeamMemberAE,
+  deleteTeamMemberById,
+} from "@/lib/odbc-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,75 +11,88 @@ export const dynamic = "force-dynamic";
 const ALLOWED_ROLES = ["LEADER", "MEMBER", "SUBSTITUTE", "COACH"] as const;
 type Role = (typeof ALLOWED_ROLES)[number];
 
-type UpdateBody = {
-  name?: string;
-  email?: string;
-  teamName?: string | null;
-  teamTricode?: string | null;
-  discordId?: string | null;
-  gameId?: string | null;
-  role?: Role | string;
-};
+export async function OPTIONS() {
+  return corsPreflight();
+}
 
-type PrismaLikeError = { code?: string };
-
-// PATCH (already had this)
+/* -------------------------------------------------------------------------- */
+/*                               PATCH (Update)                               */
+/* -------------------------------------------------------------------------- */
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  const body = (await req.json()) as Partial<UpdateBody>;
+  const body = await req.json();
 
-  const data: Prisma.TeamMemberUpdateInput = {};
-  if (body.name !== undefined) data.name = String(body.name);
-  if (body.email !== undefined) data.email = String(body.email).toLowerCase();
-  if (body.teamName !== undefined) data.teamName = body.teamName ?? null;
-  if (body.teamTricode !== undefined) data.teamTricode = body.teamTricode ?? null;
-  if (body.discordId !== undefined) data.discordId = body.discordId ?? null;
-  if (body.gameId !== undefined) data.gameId = body.gameId ?? null;
-
-  if (body.role !== undefined) {
-    const role = String(body.role).toUpperCase();
-    if (!ALLOWED_ROLES.includes(role as Role)) {
-      return NextResponse.json(
+  const role = body.role ? String(body.role).toUpperCase() : undefined;
+  if (role && !ALLOWED_ROLES.includes(role as Role)) {
+    return withCors(
+      NextResponse.json(
         { ok: false, error: `Invalid role. Use one of: ${ALLOWED_ROLES.join(", ")}` },
         { status: 400 }
-      );
-    }
-    data.role = role as Role;
+      )
+    );
   }
 
   try {
-    const updated = await prisma.teamMember.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        name: true,
-        email: true,
-        teamName: true,
-        teamTricode: true,
-        discordId: true,
-        gameId: true,
-        role: true,
-      },
+    const updatedId = await updateTeamMemberAE(id, {
+      name: body.name ?? undefined,
+      email: body.email ?? undefined,
+      teamName: body.teamName ?? undefined,
+      teamTricode: body.teamTricode ?? undefined,
+      discordId: body.discordId ?? undefined,
+      gameId: body.gameId ?? undefined,
+      role: role as Role ?? undefined,
+      passportId: body.passportId ?? undefined,
+      nationalId: body.nationalId ?? undefined,
+      bankDetails: body.bankDetails ?? undefined,
+      phone: body.phone ?? undefined,
     });
-    return NextResponse.json({ ok: true, member: updated });
+
+    return withCors(
+      NextResponse.json({ ok: true, id: updatedId }, { status: 200 })
+    );
   } catch (err: unknown) {
-    if ((err as PrismaLikeError)?.code === "P2002") {
-      return NextResponse.json(
-        { ok: false, error: "Duplicate email. Each email must be unique." },
-        { status: 409 }
+    const msg = (err as Error).message || "Server error";
+
+    if (msg.includes("Duplicate email")) {
+      return withCors(
+        NextResponse.json(
+          { ok: false, error: "Duplicate email. Each email must be unique." },
+          { status: 409 }
+        )
       );
     }
-    return NextResponse.json({ ok: false, error: "Not found or server error" }, { status: 500 });
+
+    if (msg.includes("COACH")) {
+      return withCors(
+        NextResponse.json(
+          { ok: false, error: "Coach already exists for this team" },
+          { status: 409 }
+        )
+      );
+    }
+
+    if (msg.includes("LEADER")) {
+      return withCors(
+        NextResponse.json(
+          { ok: false, error: "Team captain (leader) already exists for this team" },
+          { status: 409 }
+        )
+      );
+    }
+
+    console.error("PATCH /teams/[id] error:", err);
+    return withCors(
+      NextResponse.json({ ok: false, error: msg }, { status: 500 })
+    );
   }
 }
 
-// ✅ ADD THIS
+/* -------------------------------------------------------------------------- */
+/*                               DELETE (Remove)                              */
+/* -------------------------------------------------------------------------- */
 export async function DELETE(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -85,14 +100,17 @@ export async function DELETE(
   const { id } = await context.params;
 
   try {
-    await prisma.teamMember.delete({ where: { id } });
-    return NextResponse.json({ ok: true });
-  } catch (err: unknown) {
-    // Not found
-    if ((err as PrismaLikeError)?.code === "P2025") {
-      return NextResponse.json({ ok: false, error: "Member not found." }, { status: 404 });
+    const count = await deleteTeamMemberById(id);
+    if (count === 0) {
+      return withCors(
+        NextResponse.json({ ok: false, error: "Member not found." }, { status: 404 })
+      );
     }
-    // FK constraint etc.
-    return NextResponse.json({ ok: false, error: "Delete failed." }, { status: 500 });
+    return withCors(NextResponse.json({ ok: true }));
+  } catch (err: unknown) {
+    console.error("DELETE /teams/[id] error:", err);
+    return withCors(
+      NextResponse.json({ ok: false, error: "Delete failed." }, { status: 500 })
+    );
   }
 }
