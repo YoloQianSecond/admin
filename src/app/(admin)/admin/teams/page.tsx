@@ -307,7 +307,7 @@ export default function TeamsPage() {
                   onChange={(e) => setQuery(e.target.value)}
                 />
                 <a href="/api/teams/export" target="_blank" rel="noopener noreferrer" className="inline-block">
-                  <Button variant="outline">Export CSV</Button>
+                    <Button type="button" variant="outline">Export CSV</Button>
                 </a>
               </div>
             </div>

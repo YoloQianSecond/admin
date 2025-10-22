@@ -1,31 +1,29 @@
 // src/app/api/teams/export/route.ts
-// Purpose: Export TeamMember data as CSV for admin download.
+// Purpose: Export TeamMember data as CSV for admin download (AE-safe via ODBC).
 
-import { prisma } from "@/lib/db";
+import { readAllTeamMembers } from "@/lib/odbc-client";
 
-// Optional: avoid any caching of the CSV
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const rows = await prisma.teamMember.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  // ✅ Use AE-aware ODBC instead of Prisma
+  const rows = await readAllTeamMembers();
 
   const header = [
     "id",
     "createdAt",
+    "updatedAt",
     "name",
     "email",
     "teamName",
+    "teamTricode",
     "discordId",
     "gameId",
-    "passportId",
-    "nationalId",
-    "bankDetails",
-    "phone",
+    "role",
   ];
 
-  // Quote a cell if it contains a comma, quote, or newline; escape quotes by doubling.
+  // Escape commas/quotes/newlines for CSV compliance
   const toCell = (v: unknown) => {
     const s = String(v ?? "");
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -38,21 +36,22 @@ export async function GET() {
     lines.push(
       [
         r.id,
-        r.createdAt.toISOString(),
-        r.name,
-        r.email,
+        r.createdAt,
+        r.updatedAt,
+        r.name ?? "",
+        r.email ?? "",
         r.teamName ?? "",
+        r.teamTricode ?? "",
         r.discordId ?? "",
         r.gameId ?? "",
-        r.passportId ?? "",
-        r.nationalId ?? "",
-        r.bankDetails ?? "",
-        r.phone ?? "",
-      ].map(toCell).join(",")
+        r.role ?? "",
+      ]
+        .map(toCell)
+        .join(",")
     );
   }
 
-  // Prepend BOM for Excel and join with CRLF
+  // Add UTF-8 BOM for Excel compatibility
   const csv = "\uFEFF" + lines.join("\r\n");
 
   return new Response(csv, {
