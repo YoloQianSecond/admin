@@ -1,7 +1,12 @@
+// src/lib/odbc-client.ts
 import 'server-only';
-import 'dotenv/config';
-import odbc from 'odbc';
+// Do NOT import 'odbc' at the top level.
 
+// ---- Type-only imports (erased at build time) ----
+import type { Connection, Result } from 'odbc';
+
+// ---- Local types & helpers ----
+type OdbcNS = typeof import('odbc');
 type OdbcParam = string | number | boolean | Buffer | Date | null;
 
 function ensureLen(value: string | null | undefined, max: number): string | null {
@@ -11,10 +16,13 @@ function ensureLen(value: string | null | undefined, max: number): string | null
 
 const nn = <T>(v: T | null | undefined): T | null => (v === undefined ? null : v);
 
-type ConnWithEvents = odbc.Connection & {
-  on?: (event: 'error', listener: (err: unknown) => void) => void;
-};
+/** node-odbc’s types only accept (string|number)[], but the runtime supports null/boolean/Buffer/Date.
+ *  This assertion bridges the typing gap without changing runtime behavior. */
+function asQueryParams(params: OdbcParam[]): (string | number)[] {
+  return params as unknown as (string | number)[];
+}
 
+// ---- Connection string (no native loads here) ----
 const connStr =
   `DRIVER=ODBC Driver 18 for SQL Server;` +
   `SERVER=${process.env.SQL_HOST};` +
@@ -26,18 +34,40 @@ const connStr =
   `KeyStorePrincipalId=${process.env.CLIENT_ID};` +
   `KeyStoreSecret=${process.env.CLIENT_SECRET};`;
 
-let pool: odbc.Connection | null = null;
+// ---- Lazy loader & singleton connection (typed) ----
+let odbcNSPromise: Promise<OdbcNS> | null = null;
+let connPromise: Promise<Connection> | null = null;
 
-interface SqlError extends Error {
-  number?: number;
+async function getOdbc(): Promise<OdbcNS> {
+  if (process.env.NEXT_RUNTIME === 'edge') {
+    throw new Error('ODBC is not supported on the Edge runtime');
+  }
+  if (!odbcNSPromise) {
+    odbcNSPromise = import('odbc'); // lazy-load native module at request time
+  }
+  return odbcNSPromise;
 }
 
-export async function getConnection(): Promise<odbc.Connection> {
-  if (!pool) {
-    pool = await odbc.connect(connStr);
-    (pool as ConnWithEvents).on?.('error', (e: unknown) => console.error('[ODBC error]', e));
+export async function getConnection(): Promise<Connection> {
+  if (!connPromise) {
+    connPromise = (async () => {
+      const odbc = await getOdbc();
+      const c = await odbc.connect(connStr);
+
+      // Optional error listener if supported by the impl, no `any` needed.
+      type ConnWithOn = Connection & {
+        on: (event: 'error', listener: (err: unknown) => void) => void;
+      };
+      if ('on' in c) {
+        (c as ConnWithOn).on('error', (e: unknown) => {
+          console.error('[ODBC error]', e);
+        });
+      }
+
+      return c;
+    })();
   }
-  return pool;
+  return connPromise;
 }
 
 /* ------------------------ READ (enforced) ------------------------ */
@@ -65,6 +95,8 @@ export async function readAllTeamMembers() {
 }
 
 /* ------------------------ INSERT (enforced) ------------------------ */
+interface SqlError extends Error { number?: number; }
+
 export async function insertTeamMemberAE(data: {
   name: string;
   email: string;
@@ -85,7 +117,7 @@ export async function insertTeamMemberAE(data: {
   {
     const rows = await cn.query<{ id: string }>(
       `SELECT TOP 1 id FROM dbo.TeamMember WHERE email = ?;`,
-      [data.email] as unknown as (string | number)[]
+      [data.email]
     );
     if (rows.length > 0) {
       const err: SqlError = new Error('Duplicate email');
@@ -98,7 +130,7 @@ export async function insertTeamMemberAE(data: {
   if (data.teamTricode && (role === 'COACH' || role === 'LEADER')) {
     const rows = await cn.query<{ id: string }>(
       `SELECT TOP 1 id FROM dbo.TeamMember WHERE teamTricode = ? AND role = ?;`,
-      [data.teamTricode, role] as unknown as (string | number)[]
+      [data.teamTricode, role]
     );
     if (rows.length > 0) {
       const err: SqlError = new Error(`${role} already exists for this team`);
@@ -132,10 +164,7 @@ export async function insertTeamMemberAE(data: {
     nn(data.phone),
   ];
 
-  const result = await cn.query<{ id: string }>(
-    sql,
-    params as unknown as (string | number)[]
-  );
+  const result = await cn.query<{ id: string }>(sql, asQueryParams(params));
   return result[0]?.id;
 }
 
@@ -165,7 +194,7 @@ export async function updateTeamMemberAE(
     role: string;
   }>(
     `SELECT email, teamTricode, role FROM dbo.TeamMember WHERE id = ?;`,
-    [id] as unknown as (string | number)[]
+    [id]
   );
   if (cur.length === 0) throw new Error('Not found');
 
@@ -177,7 +206,7 @@ export async function updateTeamMemberAE(
   if (nextEmail.toLowerCase() !== cur[0].email.toLowerCase()) {
     const dup = await cn.query<{ id: string }>(
       `SELECT TOP 1 id FROM dbo.TeamMember WHERE email = ? AND id <> ?;`,
-      [nextEmail, id] as unknown as (string | number)[]
+      [nextEmail, id]
     );
     if (dup.length > 0) {
       const err: SqlError = new Error('Duplicate email');
@@ -190,7 +219,7 @@ export async function updateTeamMemberAE(
   if (nextTri && (nextRole === 'COACH' || nextRole === 'LEADER')) {
     const clash = await cn.query<{ id: string }>(
       `SELECT TOP 1 id FROM dbo.TeamMember WHERE teamTricode = ? AND role = ? AND id <> ?;`,
-      [nextTri, nextRole, id] as unknown as (string | number)[]
+      [nextTri, nextRole, id]
     );
     if (clash.length > 0) {
       const err: SqlError = new Error(`${nextRole} already exists for this team`);
@@ -235,22 +264,20 @@ export async function updateTeamMemberAE(
   `;
   vals.push(id);
 
-  const result = await cn.query<{ id: string }>(
-    sql,
-    vals as unknown as (string | number)[]
-  );
+  const result = await cn.query<{ id: string }>(sql, asQueryParams(vals));
   return result[0]?.id;
 }
 
 /* ------------------------ DELETE ------------------------ */
 export async function deleteTeamMemberById(id: string) {
   const cn = await getConnection();
-  const res = await cn.query(
+  const res: Result<{ id: string }> = await cn.query(
     `DELETE FROM dbo.TeamMember WHERE id = ?;`,
-    [id] as unknown as (string | number)[]
+    [id]
   );
   return res.count ?? 0;
 }
+
 
 /* ------------------------ READ LATEST ------------------------ */
 export async function readLatestTeamMembers(limit = 5) {

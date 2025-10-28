@@ -31,7 +31,7 @@ model NewsPost {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   title       String
-  description String
+  description String?
   entity      String?
   link        String?
   date        DateTime?
@@ -88,4 +88,17 @@ model MatchSchedule {
   title     String
   matchDate DateTime
   liveLink  String?
+}
+
+model AdminSession {
+  id         String   @id // random 64-hex we generate (NOT a JWT)
+  userEmail  String
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  revoked    Boolean  @default(false)
+  userAgent  String?
+  ip         String?
+
+  @@index([userEmail])
+  @@index([expiresAt])
 }

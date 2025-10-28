@@ -1,9 +1,14 @@
+// app/admin/layout.tsx
 import type { ReactNode } from "react";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { Header } from "@/components/admin/Header";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession } from "@/lib/jwt";
+import { getValidSession } from "@/lib/session";
+import KeepAlive from "./_keepalive";
+
+export const dynamic = "force-dynamic"; // ensure per-request cookie read
+export const runtime = "nodejs";        // prisma-friendly
 
 function getAdminEmails(): string[] {
   return (process.env.ADMIN_EMAILS || "")
@@ -13,31 +18,21 @@ function getAdminEmails(): string[] {
 }
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const store = await cookies();
-  const token = store.get("admin_session")?.value; // correct cookie name
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get("admin_session")?.value;
 
-  if (!token) {
-    redirect("/login");
-  }
+  const session = await getValidSession(sessionId);
+  if (!session) redirect("/login");
 
-  try {
-    const payload = await verifySession(token);
-    if (payload.role !== "admin") {
-      throw new Error("Not admin");
-    }
-
-    // ✅ allowlist check for multiple emails
-    const allowed = getAdminEmails();
-    const userEmail = String(payload.sub || "").toLowerCase();
-    if (allowed.length > 0 && !allowed.includes(userEmail)) {
-      throw new Error("Not an allowed admin email");
-    }
-  } catch {
+  // Optional allowlist check (replaces the old JWT role/email check)
+  const allowed = getAdminEmails();
+  if (allowed.length > 0 && !allowed.includes(session.userEmail.toLowerCase())) {
     redirect("/login");
   }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <KeepAlive />
       <div className="flex">
         <Sidebar />
         <div className="flex-1 min-h-screen">

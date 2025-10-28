@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { withCors, corsPreflight } from "@/lib/cors";
 import { sendRegistrationEmail, sendAdminDigest } from "@/lib/mail";
-
-// ✅ ODBC AE-aware helpers
 import { insertTeamMemberAE, readAllTeamMembers } from "@/lib/odbc-client";
 
 export const runtime = "nodejs";
@@ -12,25 +10,60 @@ export async function OPTIONS() {
   return corsPreflight();
 }
 
-const emailRe = /\S+@\S+\.\S+/;
+/* ---------------- VALIDATORS ---------------- */
 
 type MemberRole = "LEADER" | "MEMBER" | "SUBSTITUTE" | "COACH";
-function isValidRole(role: string | null | undefined): role is MemberRole {
-  const r = (role ?? "").toString().toUpperCase();
-  return r === "LEADER" || r === "MEMBER" || r === "SUBSTITUTE" || r === "COACH";
+const ROLES = new Set<MemberRole>(["LEADER", "MEMBER", "SUBSTITUTE", "COACH"]);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const SAFE_TEXT = /^[A-Za-z0-9 .,'!@#&()_\-/:?]+$/u;
+const SAFE_TEAM = /^[A-Za-z0-9 .,'&()_\-]+$/u;
+const SAFE_DISCORD = /^[A-Za-z0-9_@#.\-:]{2,64}$/u;
+const SAFE_GAMEID = /^[A-Za-z0-9_\-.]{2,64}$/u;
+const SAFE_PHONE = /^[0-9+\-() ]{6,32}$/;
+const SAFE_ID = /^[A-Za-z0-9\- ]{3,64}$/;
+const SAFE_BANK = /^[A-Za-z0-9\- ]{3,64}$/;
+
+function cleanText(val: unknown, maxLen = 200, pattern: RegExp = SAFE_TEXT): string | null {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (!s || s.length > maxLen) return null;
+  if (!pattern.test(s)) return null;
+  if (/[<>]/.test(s) || /script:|javascript:/i.test(s)) return null;
+  return s.replace(/\s+/g, " ");
 }
 
-/** 🔁 Helper: detect SQL duplicate-type numbers */
-type SqlishError = {
-  number?: number;
-  errno?: number;
-  code?: number;
-  originalError?: {
-    info?: { number?: number };
-    number?: number;
-  };
-};
+function cleanOptional(val: unknown, maxLen = 200, pattern: RegExp = SAFE_TEXT): string | null {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (s === "") return null;
+  return cleanText(s, maxLen, pattern);
+}
 
+function normalizeEmail(val: unknown): string | null {
+  const s = String(val ?? "").trim().toLowerCase();
+  if (!s || s.length > 254 || !EMAIL_RE.test(s)) return null;
+  return s;
+}
+
+function normalizeTricode(val: unknown): string | null {
+  const s = String(val ?? "").trim().toUpperCase();
+  if (!s) return null;
+  if (!/^[A-Z]{3}$/.test(s)) return null;
+  return s;
+}
+
+function normalizePhone(val: unknown): string | null {
+  const s = String(val ?? "").trim();
+  if (!s) return null;
+  if (!SAFE_PHONE.test(s)) return null;
+  return s;
+}
+
+type SqlishError = {
+  number?: number; errno?: number; code?: number;
+  originalError?: { info?: { number?: number }; number?: number };
+};
 function getSqlErrorNumber(err: unknown): number | undefined {
   const e = err as SqlishError;
   return (
@@ -42,15 +75,11 @@ function getSqlErrorNumber(err: unknown): number | undefined {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                   GET                                      */
-/* -------------------------------------------------------------------------- */
+/* ---------------- GET ---------------- */
 
 export async function GET() {
   try {
-    // ✅ Use ODBC to decrypt AE fields like name/email
     const members = await readAllTeamMembers();
-
     return withCors(
       NextResponse.json(
         { ok: true, members },
@@ -64,115 +93,99 @@ export async function GET() {
       )
     );
   } catch (err) {
-    console.error("Teams GET error:", err);
-    return withCors(
-      NextResponse.json({ ok: false, error: "Server error" }, { status: 500 })
-    );
+    console.error("Teams GET error");
+    return withCors(NextResponse.json({ ok: false, error: "Server error" }, { status: 500 }));
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                   POST                                     */
-/* -------------------------------------------------------------------------- */
+/* ---------------- POST ---------------- */
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    // Require JSON to reduce injection & CSRF surface
+    const ctype = req.headers.get("content-type") || "";
+    if (!ctype.includes("application/json")) {
+      return withCors(
+        NextResponse.json({ ok: false, error: "Content-Type must be application/json" }, { status: 415 })
+      );
+    }
 
-    const name = String(body.name ?? "").trim();
-    const email = String(body.email ?? "").trim().toLowerCase();
-    const teamName = (body.teamName ? String(body.teamName).trim() : "") || null;
-    const teamTricode =
-      (body.teamTricode ? String(body.teamTricode).trim().toUpperCase() : "") || null;
-    const discordId = (body.discordId ? String(body.discordId).trim() : "") || null;
-    const gameId = (body.gameId ? String(body.gameId).trim() : "") || null;
+    const body = await req.json().catch(() => ({}));
 
-    const roleRaw = (body.role ?? "MEMBER").toString().toUpperCase();
-    const role: MemberRole = isValidRole(roleRaw) ? (roleRaw as MemberRole) : "MEMBER";
-
-    // ---- Validation ----
+    // Required: name, email
+    const name = cleanText(body.name, 100, SAFE_TEXT);
     if (!name) {
-      return withCors(
-        NextResponse.json({ ok: false, error: "name is required" }, { status: 400 })
-      );
+      return withCors(NextResponse.json({ ok: false, error: "name is required" }, { status: 400 }));
     }
-    if (!email || !emailRe.test(email)) {
-      return withCors(
-        NextResponse.json({ ok: false, error: "valid email is required" }, { status: 400 })
-      );
+
+    const email = normalizeEmail(body.email);
+    if (!email) {
+      return withCors(NextResponse.json({ ok: false, error: "valid email is required" }, { status: 400 }));
     }
-    if (teamTricode && teamTricode.length !== 3) {
-      return withCors(
-        NextResponse.json(
-          { ok: false, error: "teamTricode must be 3 chars" },
-          { status: 400 }
-        )
-      );
-    }
+
+    // Optional fields with safe patterns
+    const teamName = cleanOptional(body.teamName, 120, SAFE_TEAM);
+    const teamTricode = normalizeTricode(body.teamTricode);
+    const discordId = cleanOptional(body.discordId, 64, SAFE_DISCORD);
+    const gameId = cleanOptional(body.gameId, 64, SAFE_GAMEID);
+
+    // Role
+    const roleRaw = String(body.role ?? "MEMBER").toUpperCase();
+    const role = ROLES.has(roleRaw as MemberRole) ? (roleRaw as MemberRole) : "MEMBER";
+
+    // LEADER/COACH rules
     if ((role === "LEADER" || role === "COACH") && !teamTricode) {
       return withCors(
         NextResponse.json(
-          { ok: false, error: "teamTricode is required for LEADER and COACH roles" },
+          { ok: false, error: "teamTricode is required for LEADER and COACH roles (3 letters A–Z)" },
           { status: 400 }
         )
       );
     }
 
-    // ---- Insert (AE-aware) ----
+    // Sensitive optional fields
+    const passportId = cleanOptional(body.passportId, 64, SAFE_ID);
+    const nationalId = cleanOptional(body.nationalId, 64, SAFE_ID);
+    const bankDetails = cleanOptional(body.bankDetails, 64, SAFE_BANK);
+    const phone = normalizePhone(body.phone);
+
+    // Insert via AE (parameterized)
     const insertedId = await insertTeamMemberAE({
       name,
       email,
-      teamName,
-      teamTricode,
-      discordId,
-      gameId,
+      teamName: teamName ?? null,
+      teamTricode: teamTricode ?? null,
+      discordId: discordId ?? null,
+      gameId: gameId ?? null,
       role,
-      passportId: body.passportId ?? null,
-      nationalId: body.nationalId ?? null,
-      bankDetails: body.bankDetails ?? null,
-      phone: body.phone ?? null,
+      passportId: passportId ?? null,
+      nationalId: nationalId ?? null,
+      bankDetails: bankDetails ?? null,
+      phone: phone ?? null,
     });
 
-    // ---- Async mail notifications ----
+    // Async mails - no PII logged
     Promise.allSettled([
       sendRegistrationEmail(email, teamName ?? "", teamTricode ?? ""),
       sendAdminDigest([email], teamName ?? "", teamTricode ?? ""),
-    ]).catch((e) => console.error("Email send error (single):", e));
+    ]).catch(() => {});
 
     return withCors(NextResponse.json({ ok: true, id: insertedId }));
-  } catch (err: unknown) {
+  } catch (err) {
     const code = getSqlErrorNumber(err);
-    const message = (err as Error)?.message || "Server error";
+    const msg = (err as Error)?.message || "Server error";
 
-    // Handle specific messages for duplicates and roles
-    if (code === 2627 && message.includes("Duplicate email")) {
-      return withCors(
-        NextResponse.json(
-          { ok: false, error: "Duplicate email. Each email must be unique." },
-          { status: 409 }
-        )
-      );
+    if (code === 2627 && /Duplicate email/i.test(msg)) {
+      return withCors(NextResponse.json({ ok: false, error: "Duplicate email" }, { status: 409 }));
     }
-    if (code === 2601 && message.includes("COACH")) {
-      return withCors(
-        NextResponse.json(
-          { ok: false, error: "Coach already exists for this team" },
-          { status: 409 }
-        )
-      );
+    if (code === 2601 && /COACH/i.test(msg)) {
+      return withCors(NextResponse.json({ ok: false, error: "Coach already exists" }, { status: 409 }));
     }
-    if (code === 2601 && message.includes("LEADER")) {
-      return withCors(
-        NextResponse.json(
-          { ok: false, error: "Team captain (leader) already exists for this team" },
-          { status: 409 }
-        )
-      );
+    if (code === 2601 && /LEADER/i.test(msg)) {
+      return withCors(NextResponse.json({ ok: false, error: "Leader already exists" }, { status: 409 }));
     }
 
-    console.error("Teams POST error:", message, err);
-    return withCors(
-      NextResponse.json({ ok: false, error: message }, { status: 500 })
-    );
+    console.error("Teams POST server error");
+    return withCors(NextResponse.json({ ok: false, error: "Server error" }, { status: 500 }));
   }
 }
