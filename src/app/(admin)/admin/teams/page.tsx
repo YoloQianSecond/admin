@@ -45,6 +45,7 @@ export default function TeamsPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [error, setError] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const [exporting, setExporting] = useState(false); // ⬅️ NEW
 
   // form + edit mode
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,6 +75,25 @@ export default function TeamsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  function messageFromUnknown(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
+}
+
+function hasErrorString(x: unknown): x is { error: string } {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    "error" in x &&
+    typeof (x as Record<string, unknown>).error === "string"
+  );
+}
 
   function resetForm() {
     setEditingId(null);
@@ -166,13 +186,48 @@ export default function TeamsPage() {
     await load();
   }
 
+  // ⬇️ NEW: secure CSV export via POST (matches server guard)
+  async function exportCsv() {
+    try {
+      setError("");
+      setExporting(true);
+
+      const res = await fetch("/api/teams/export", {
+        method: "POST",
+        credentials: "include",
+        headers: { Accept: "text/csv" },
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        let msg = `Export failed (HTTP ${res.status})`;
+        // Safely try to read a JSON error payload
+        const j: unknown = await res.json().catch(() => null);
+        if (hasErrorString(j)) msg = j.error;
+        throw new Error(msg);
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "team_members.csv";
+      a.click();
+      URL.revokeObjectURL(url); // ✅ correct API
+    } catch (e: unknown) {
+      setError(messageFromUnknown(e) || "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   // ---- derived: group by team (tricode first; fallback to teamName; else "UNASSIGNED") + search filter
   type TeamGroup = {
-    key: string;            // e.g., "DOG" or "DOG|Dog"
-    tricode: string | null; // "DOG"
+    key: string;
+    tricode: string | null;
     teamName: string | null;
     members: Member[];
-    createdAt: number;      // earliest createdAt among members (for ordering)
+    createdAt: number;
   };
 
   const filteredMembers = useMemo(() => {
@@ -215,8 +270,6 @@ export default function TeamsPage() {
       g.members.push(m);
       g.createdAt = Math.min(g.createdAt, Number(new Date(m.createdAt)));
     }
-
-    // order: newest teams first (by earliest member creation within team)
     return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
   }, [filteredMembers]);
 
@@ -306,9 +359,16 @@ export default function TeamsPage() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
-                <a href="/api/teams/export" target="_blank" rel="noopener noreferrer" className="inline-block">
-                    <Button type="button" variant="outline">Export CSV</Button>
-                </a>
+                {/* ⬇️ Replaced anchor with secure POST trigger */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={exportCsv}
+                  disabled={exporting}
+                  aria-busy={exporting}
+                >
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </Button>
               </div>
             </div>
           </form>
@@ -382,7 +442,7 @@ export default function TeamsPage() {
       {/* Pagination controls */}
       <div className="flex items-center justify-between">
         <div className="text-xs text-muted-foreground">
-          Showing {(startIdx + 1)}–{Math.min(startIdx + TEAMS_PER_PAGE, totalTeams)} of {totalTeams} team(s)
+          Showing {startIdx + 1}–{Math.min(startIdx + TEAMS_PER_PAGE, totalTeams)} of {totalTeams} team(s)
         </div>
         <div className="flex gap-2">
           <Button

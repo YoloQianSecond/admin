@@ -4,16 +4,11 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// Defaults (idle timeout short)
-const DEFAULT_IDLE_SECONDS = Number(process.env.SESSION_IDLE_SECONDS ?? 900); // 15 minutes
-// For an absolute max cap, later we could add absoluteExpiresAt column
+// Idle + absolute limits from env
+const DEFAULT_IDLE_SECONDS = Number(process.env.SESSION_IDLE_SECONDS ?? 900); // e.g., 60 in your tests
+const ABSOLUTE_MAX_SECONDS = Number(process.env.SESSION_ABSOLUTE_SECONDS ?? 0); // e.g., 7200 (2h). 0 = disabled
 
-/**
- * Create a new session with an idle expiry (expiresAt).
- * @param userEmail
- * @param idleSeconds   TTL until idle expiry (default from env)
- * @param meta          Optional metadata: user-agent, ip, etc.
- */
+/** Create a new session with idle expiry (slides on activity). */
 export async function createSession(
   userEmail: string,
   idleSeconds: number = DEFAULT_IDLE_SECONDS,
@@ -29,36 +24,55 @@ export async function createSession(
       expiresAt,
       userAgent: meta?.ua,
       ip: meta?.ip,
+      // assumes your Prisma model sets createdAt automatically (now())
     },
   });
 
   return { id, expiresAt };
 }
 
-/**
- * Validate session & enforce idle expiry.
- * Returns the session record if valid. Otherwise null.
- */
-export async function getValidSession(sessionId?: string) {
+/** Validate session; enforce idle + absolute expiry (+ optional UA/IP binding). */
+export async function getValidSession(
+  sessionId?: string,
+  meta?: { ua?: string; ip?: string }
+) {
   if (!sessionId) return null;
+
   const s = await prisma.adminSession.findUnique({ where: { id: sessionId } });
   if (!s || s.revoked) return null;
 
   const now = new Date();
-  if (s.expiresAt <= now) return null; // idle expired
+
+  // Idle expiry (sliding)
+  if (s.expiresAt <= now) return null;
+
+  // Absolute max lifetime based on createdAt (no schema change needed)
+  if (ABSOLUTE_MAX_SECONDS > 0) {
+    // Ensure your adminSession has createdAt (DateTime @default(now()))
+    const absoluteCutoff = new Date(s.createdAt.getTime() + ABSOLUTE_MAX_SECONDS * 1000);
+    if (absoluteCutoff <= now) return null;
+  }
+
+  // Optional soft binding
+  if (meta?.ua && s.userAgent && s.userAgent !== meta.ua) return null;
+  if (meta?.ip && s.ip && s.ip !== meta.ip) return null;
 
   return s;
 }
 
 /**
- * Extend (slide) idle expiry on activity.
- * Called from /api/auth/ping during active usage.
+ * Slide idle expiry on activity.
+ * IMPORTANT: do NOT revive dead sessions — revalidate first.
  */
 export async function touchSession(
   sessionId: string,
   idleSeconds: number = DEFAULT_IDLE_SECONDS
 ) {
   if (!sessionId) return null;
+
+  // Revalidate before touching so expired/revoked/absolute-dead sessions stay dead
+  const valid = await getValidSession(sessionId);
+  if (!valid) return null;
 
   const newExpires = new Date(Date.now() + idleSeconds * 1000);
 
@@ -68,12 +82,10 @@ export async function touchSession(
     select: { userEmail: true, expiresAt: true },
   });
 
-  return updated;
+  return updated; // { userEmail, expiresAt }
 }
 
-/**
- * Revoke a session (logout).
- */
+/** Revoke a session (logout). */
 export async function revokeSession(sessionId?: string) {
   if (!sessionId) return;
   try {
