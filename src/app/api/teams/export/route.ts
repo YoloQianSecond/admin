@@ -4,17 +4,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readAllTeamMembers } from "@/lib/odbc-client";
 import { requireAdminSession } from "@/lib/auth";
+import { isAllowedOrigin } from "@/lib/origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // --- Optional: tiny same-origin check for cookie-auth POSTs ---
-function isSameOrigin(req: NextRequest) {
-  const origin = req.headers.get("origin");
-  if (!origin) return false;
-  const url = new URL(req.url);
-  return origin === `${url.protocol}//${url.host}`;
-}
 
 // Prefer POST (with CSRF/same-origin) for cookie-based auth.
 // If you must keep GET, do the same checks in GET.
@@ -24,7 +19,7 @@ export async function POST(req: NextRequest) {
     await requireAdminSession();
 
     // 🔐 Basic CSRF hardening for cookie-auth flows
-    if (!isSameOrigin(req)) {
+    if (!isAllowedOrigin(req)) {
       return NextResponse.json({ error: "CSRF_FORBIDDEN" }, { status: 403 });
     }
 

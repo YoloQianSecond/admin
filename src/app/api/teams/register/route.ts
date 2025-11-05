@@ -31,13 +31,14 @@ const TRICODE_RE        = /^[A-Z]{3}$/;                   // exactly 3 A–Z
 const USER_ALNUM_UNDERS = /^[A-Za-z0-9_]{2,64}$/u;        // Discord/Game: letters/digits/underscore
 const ID_ALNUM_SP       = /^[A-Za-z0-9 ]{3,64}$/u;        // passport/national/bank (no punctuation)
 const SAFE_PHONE        = /^[0-9+\-() ]{6,32}$/;          // digits + limited symbols
+const DISCORD_ID        = /^[A-Za-z0-9_]{2,64}(?:#[0-9]{1,5})?$/u; // Discord ID with optional discriminator
 
 // Required & must match
 function requirePattern(val: unknown, pattern: RegExp, maxLen = 120, label = "field"): string {
   const s = String(val ?? "").trim();
   if (!s) throw new Error(`Valid ${label} is required`);
   if (s.length > maxLen) throw new Error(`${label} too long`);
-  if (!pattern.test(s)) throw new Error(`Invalid ${label}`);
+  if (!pattern.test(s)) throw new Error(`Invalid ${label}, Only Alphanumeric/Numbers are allowed`);
   return s;
 }
 
@@ -134,7 +135,7 @@ export async function POST(req: Request) {
     // If client sends teamTricode, it MUST be 3 letters A–Z (uppercase enforced)
     const teamTricode = requireIfPresent(body, "teamTricode", TRICODE_RE, "teamTricode", (s) => s.toUpperCase());
 
-    const discordId   = optionalPattern(body.discordId, USER_ALNUM_UNDERS, 64, "discordId");
+    const discordId   = optionalPattern(body.discordId, DISCORD_ID, 64, "discordId");
     const gameId      = optionalPattern(body.gameId,    USER_ALNUM_UNDERS, 64, "gameId");
 
     // Role

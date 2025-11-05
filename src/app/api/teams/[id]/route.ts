@@ -20,6 +20,7 @@ const TRICODE_RE        = /^[A-Z]{3}$/;                   // exactly 3 A–Z
 const USER_ALNUM_UNDERS = /^[A-Za-z0-9_]{2,64}$/u;        // letters/digits/underscore only
 const ID_ALNUM_SP       = /^[A-Za-z0-9 ]{3,64}$/u;        // passport/national/bank
 const SAFE_PHONE        = /^[0-9+\-() ]{6,32}$/;
+const DISCORD_ID        = /^[A-Za-z0-9_]{2,64}(?:#[0-9]{1,5})?$/u; // Discord ID with optional discriminator
 
 function requirePattern(val: unknown, pattern: RegExp, maxLen = 120, label = "field"): string {
   const s = String(val ?? "").trim();
@@ -140,7 +141,7 @@ export async function PATCH(
     const email       = normalizeEmailOptional(body.email);
     const teamName    = optionalPattern(body.teamName, NAME_ALNUM_SP, 120, "teamName");
     const teamTricode = requireIfPresent(body, "teamTricode", TRICODE_RE, "teamTricode", (s) => s.toUpperCase());
-    const discordId   = optionalPattern(body.discordId, USER_ALNUM_UNDERS, 64, "discordId");
+    const discordId   = optionalPattern(body.discordId, DISCORD_ID, 64, "discordId");
     const gameId      = optionalPattern(body.gameId,    USER_ALNUM_UNDERS, 64, "gameId");
 
     // Role (if present) must be valid
