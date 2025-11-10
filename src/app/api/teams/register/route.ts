@@ -28,7 +28,7 @@ const EMAIL_RE = /^[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 // Tight patterns (alphanumeric with minimal extras)
 const NAME_ALNUM_SP     = /^(?! )[A-Za-z0-9 ]+(?<! )$/u;  // letters/digits + spaces, no leading/trailing space
 const TRICODE_RE        = /^[A-Z]{3}$/;                   // exactly 3 A–Z
-const USER_ALNUM_UNDERS = /^[A-Za-z0-9_]{2,64}$/u;        // Discord/Game: letters/digits/underscore
+const USER_ALNUM_UNDERS = /^(?! )[A-Za-z0-9 _.\-()']{2,64}(?<! )$/u;;        // Discord/Game: letters/digits/underscore
 const ID_ALNUM_SP       = /^[A-Za-z0-9 ]{3,64}$/u;        // passport/national/bank (no punctuation)
 const SAFE_PHONE        = /^[0-9+\-() ]{6,32}$/;          // digits + limited symbols
 const DISCORD_ID        = /^[A-Za-z0-9_]{2,64}(?:#[0-9]{1,5})?$/u; // Discord ID with optional discriminator
@@ -112,6 +112,8 @@ export async function POST(req: Request) {
       "teamTricode",
       "discordId",
       "gameId",
+      "igName",
+      "qualifierCountry",
       "role",
       "passportId",
       "nationalId",
@@ -137,6 +139,8 @@ export async function POST(req: Request) {
 
     const discordId   = optionalPattern(body.discordId, DISCORD_ID, 64, "discordId");
     const gameId      = optionalPattern(body.gameId,    USER_ALNUM_UNDERS, 64, "gameId");
+    const igName      = optionalPattern(body.igName,    USER_ALNUM_UNDERS, 64, "igName");
+    const qualifierCountry = optionalPattern(body.qualifierCountry, NAME_ALNUM_SP, 64, "qualifierCountry");
 
     // Role
     const role = toRole(body.role);
@@ -165,6 +169,8 @@ export async function POST(req: Request) {
       teamTricode: teamTricode ?? null,
       discordId:   discordId ?? null,
       gameId:      gameId ?? null,
+      igName:      igName ?? null,
+      qualifierCountry: qualifierCountry ?? null,
       role,
       passportId:  passportId ?? null,
       nationalId:  nationalId ?? null,

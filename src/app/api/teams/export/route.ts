@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     const header = [
       "id","createdAt","updatedAt","name","email",
-      "teamName","teamTricode","discordId","gameId","role",
+      "teamName","teamTricode","discordId","gameId","igName","qualifierCountry","role",
     ];
 
     const toCell = (v: unknown) => {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       lines.push([
         r.id, r.createdAt, r.updatedAt, r.name ?? "", r.email ?? "",
         r.teamName ?? "", r.teamTricode ?? "", r.discordId ?? "",
-        r.gameId ?? "", r.role ?? "",
+        r.gameId ?? "", r.igName ?? "", r.qualifierCountry ?? "", r.role ?? "",
       ].map(toCell).join(","));
     }
 

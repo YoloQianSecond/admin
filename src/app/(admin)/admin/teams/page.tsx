@@ -18,6 +18,8 @@ type Member = {
   teamTricode?: string | null;
   discordId?: string | null;
   gameId?: string | null;
+  igName?: string | null;
+  qualifierCountry?: string | null;
   role: MemberRole;
 };
 
@@ -39,6 +41,17 @@ const ROLE_CLASS: Record<MemberRole, string> = {
     "bg-sky-100 text-sky-800 border border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-700/50",
 };
 
+const QUALIFIER_COUNTRIES = [
+  "Malaysia",
+  "Philippines",
+  "Indonesia",
+  "Thailand",
+  "Vietnam",
+  "Singapore",
+  "Australia",
+  "New Zealand",
+] as const;
+
 const TEAMS_PER_PAGE = 5;
 
 export default function TeamsPage() {
@@ -56,6 +69,8 @@ export default function TeamsPage() {
     teamTricode: "",
     discordId: "",
     gameId: "",
+    igName: "",
+    qualifierCountry: "",
     role: "MEMBER" as MemberRole,
   });
 
@@ -104,6 +119,8 @@ function hasErrorString(x: unknown): x is { error: string } {
       teamTricode: "",
       discordId: "",
       gameId: "",
+      igName: "",
+      qualifierCountry: "",
       role: "MEMBER",
     });
     setError("");
@@ -118,6 +135,8 @@ function hasErrorString(x: unknown): x is { error: string } {
       teamTricode: (m.teamTricode ?? "").toUpperCase(),
       discordId: m.discordId ?? "",
       gameId: m.gameId ?? "",
+      igName: m.igName ?? "",
+      qualifierCountry: m.qualifierCountry ?? "",
       role: (m.role ?? "MEMBER") as MemberRole,
     });
     setError("");
@@ -136,6 +155,8 @@ function hasErrorString(x: unknown): x is { error: string } {
         teamTricode: form.teamTricode ? form.teamTricode.toUpperCase() : null,
         discordId: form.discordId.trim() || null,
         gameId: form.gameId.trim() || null,
+        igName: form.igName.trim() || null,
+        qualifierCountry: form.qualifierCountry || null,
         role: form.role as MemberRole,
       };
 
@@ -241,6 +262,8 @@ function hasErrorString(x: unknown): x is { error: string } {
         m.teamTricode ?? "",
         m.discordId ?? "",
         m.gameId ?? "",
+        m.igName ?? "",
+        m.qualifierCountry ?? "",
         m.role,
       ]
         .join(" ")
@@ -335,10 +358,30 @@ function hasErrorString(x: unknown): x is { error: string } {
               onChange={(e) => setForm({ ...form, discordId: e.target.value })}
             />
             <Input
-              placeholder="Game/Steam ID"
+              placeholder="Steam ID"
               value={form.gameId}
               onChange={(e) => setForm({ ...form, gameId: e.target.value })}
             />
+
+            <Input
+              placeholder="In-Game Name (IGN)"
+              value={form.igName}
+              onChange={(e) => setForm({ ...form, igName: e.target.value })}
+            />
+
+            <div className="md:col-span-1">
+              <select
+                value={form.qualifierCountry}
+                onChange={(e) => setForm({ ...form, qualifierCountry: e.target.value })}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Participating Country Qualifier"
+              >
+                <option value="">Participating Country Qualifier</option>
+                {QUALIFIER_COUNTRIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
 
             {error && (
               <div className="text-red-600 text-sm md:col-span-3 -mt-1">{error}</div>
@@ -409,11 +452,17 @@ function hasErrorString(x: unknown): x is { error: string } {
                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${ROLE_CLASS[m.role]}`}>
                             {ROLE_LABEL[m.role]}
                           </span>
+                          {m.qualifierCountry ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300 dark:border-slate-700/50">
+                              {m.qualifierCountry}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {m.email}
                           {m.discordId ? ` • ${m.discordId}` : ""}
                           {m.gameId ? ` • ${m.gameId}` : ""}
+                          {m.igName ? ` • IGN: ${m.igName}` : ""}
                         </div>
                       </div>
                       <div className="flex gap-2">

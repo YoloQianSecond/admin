@@ -83,11 +83,13 @@ export async function readAllTeamMembers() {
     teamTricode: string | null;
     discordId: string | null;
     gameId: string | null;
+    igName: string | null;
+    qualifierCountry: string | null;
     role: string;
   }>(`
     SELECT
       id, createdAt, updatedAt,
-      name, email, teamName, teamTricode, discordId, gameId, role
+      name, email, teamName, teamTricode, discordId, gameId, igName, qualifierCountry, role
     FROM dbo.TeamMember
     ORDER BY createdAt DESC;
   `);
@@ -104,6 +106,8 @@ export async function insertTeamMemberAE(data: {
   teamTricode?: string | null;
   discordId?: string | null;
   gameId?: string | null;
+  igName?: string | null;
+  qualifierCountry?: string | null;
   role?: string; // default MEMBER
   passportId?: string | null;
   nationalId?: string | null;
@@ -143,7 +147,7 @@ export async function insertTeamMemberAE(data: {
   const sql = `
     INSERT INTO dbo.TeamMember
       (id, createdAt, updatedAt, name, email, teamName, teamTricode,
-       discordId, gameId, role, passportId, nationalId, bankDetails, phone)
+       discordId, gameId, igName, qualifierCountry, role, passportId, nationalId, bankDetails, phone)
     OUTPUT INSERTED.id
     VALUES
       (NEWID(), SYSUTCDATETIME(), SYSUTCDATETIME(),
@@ -157,6 +161,8 @@ export async function insertTeamMemberAE(data: {
     ensureLen(data.teamTricode, 3),
     nn(data.discordId),
     nn(data.gameId),
+    nn(data.igName),
+    nn(data.qualifierCountry),
     role,
     nn(data.passportId),
     nn(data.nationalId),
@@ -178,6 +184,8 @@ export async function updateTeamMemberAE(
     teamTricode?: string | null;
     discordId?: string | null;
     gameId?: string | null;
+    igName?: string | null;
+    qualifierCountry?: string | null;
     role?: 'LEADER' | 'MEMBER' | 'SUBSTITUTE' | 'COACH' | null;
     passportId?: string | null;
     nationalId?: string | null;
@@ -246,6 +254,8 @@ export async function updateTeamMemberAE(
   push('teamTricode', ensureLen(patch.teamTricode, 3));
   push('discordId', patch.discordId);
   push('gameId', patch.gameId);
+  push('igName', patch.igName);
+  push('qualifierCountry', patch.qualifierCountry);
   push('role', patch.role, (r) => (r ? String(r).toUpperCase() : r));
   push('passportId', patch.passportId);
   push('nationalId', patch.nationalId);
