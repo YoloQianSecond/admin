@@ -151,7 +151,7 @@ export async function insertTeamMemberAE(data: {
     OUTPUT INSERTED.id
     VALUES
       (NEWID(), SYSUTCDATETIME(), SYSUTCDATETIME(),
-       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? , ?, ?);
   `;
 
   const params: OdbcParam[] = [

@@ -1,4 +1,4 @@
-// app/api/teams/route.ts
+// app/api/teams/register/route.ts
 
 import { NextResponse } from "next/server";
 import { withCors, corsPreflight } from "@/lib/cors";
